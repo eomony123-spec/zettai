@@ -27,6 +27,7 @@ body {
   font-family: "Press Start 2P", monospace;
   color: var(--ink);
   background: linear-gradient(180deg, var(--sky) 0%, var(--sky-2) 100%);
+  overflow-x: hidden;
 }
 
 a {
@@ -36,7 +37,7 @@ a {
 
 main {
   min-height: 100vh;
-  padding: 10px 12px 24px;
+  padding: clamp(8px, 2vw, 16px);
   background: linear-gradient(180deg, #fff6d9 0%, #ffeeb8 100%);
 }
 
@@ -44,36 +45,36 @@ main {
   width: 100%;
   margin: 0 auto;
   display: grid;
-  gap: 14px;
+  gap: clamp(10px, 2vw, 18px);
 }
 
 .home {
   min-height: 80vh;
   display: grid;
   place-items: center;
-  gap: 8px;
+  gap: clamp(8px, 2vw, 16px);
   text-align: center;
 }
 
 .topbar {
   display: grid;
   justify-items: center;
-  gap: 10px;
+  gap: clamp(8px, 2vw, 14px);
   text-align: center;
 }
 
 .app-title {
   font-family: "Press Start 2P", monospace;
-  font-size: clamp(34px, 6vw, 60px);
+  font-size: clamp(28px, 7vw, 64px);
   margin: 4px 0 6px;
   letter-spacing: 0.04em;
   color: #000;
 }
 
 .subtitle {
-  font-size: 14px;
+  font-size: clamp(12px, 2.6vw, 16px);
   line-height: 1.7;
-  max-width: 720px;
+  max-width: min(90vw, 720px);
   color: #2b2b2b;
 }
 
@@ -114,14 +115,14 @@ main {
   background: var(--white);
   border: 4px solid var(--border);
   border-radius: 0;
-  padding: 16px;
+  padding: clamp(12px, 2vw, 18px);
   box-shadow: 0 6px 0 var(--border);
   width: 100%;
 }
 
 .title {
   font-family: "Press Start 2P", monospace;
-  font-size: 22px;
+  font-size: clamp(18px, 3.6vw, 24px);
   margin: 0 0 8px;
 }
 
@@ -130,16 +131,21 @@ main {
 }
 
 .btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 4px solid var(--border);
   background: var(--brick);
   color: #fff;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: 0;
   cursor: pointer;
   box-shadow: 0 6px 0 var(--brick-dark);
   font-family: "Press Start 2P", monospace;
-  font-size: 12px;
+  font-size: clamp(12px, 2.6vw, 14px);
+  min-height: 44px;
+  min-width: 44px;
+  white-space: nowrap;
 }
 
 .btn.gold {
@@ -149,8 +155,8 @@ main {
 }
 
 .hero-btn {
-  font-size: clamp(18px, 4vw, 28px);
-  padding: 14px 18px;
+  font-size: clamp(16px, 4vw, 28px);
+  padding: clamp(12px, 3vw, 18px) clamp(14px, 3vw, 22px);
 }
 
 .actions {
@@ -172,8 +178,8 @@ main {
 }
 
 .ball {
-  width: 50px;
-  height: 50px;
+  width: clamp(44px, 9vw, 56px);
+  height: clamp(44px, 9vw, 56px);
   border-radius: 0;
   border: 3px solid var(--border);
   display: grid;
@@ -181,7 +187,7 @@ main {
   background: var(--ground);
   font-weight: 700;
   box-shadow: 0 4px 0 var(--ground-2);
-  font-size: 22px;
+  font-size: clamp(18px, 4vw, 24px);
 }
 
 .history-list {
@@ -191,14 +197,14 @@ main {
 
 .history-title {
   font-family: "Press Start 2P", monospace;
-  font-size: 12px;
+  font-size: clamp(10px, 2.4vw, 12px);
   margin: 10px 0 6px;
 }
 
 .history-item {
   padding: 8px 0;
   border-bottom: 2px dashed #d4b86a;
-  font-size: 16px;
+  font-size: clamp(12px, 2.6vw, 16px);
 }
 
 .history-row {
@@ -208,7 +214,7 @@ main {
 
 .history-date {
   color: #5c4a24;
-  font-size: 12px;
+  font-size: clamp(10px, 2.4vw, 12px);
 }
 
 input {
@@ -217,7 +223,8 @@ input {
   border-radius: 0;
   padding: 8px;
   font-family: "Press Start 2P", monospace;
-  font-size: 14px;
+  font-size: clamp(12px, 2.6vw, 14px);
+  min-height: 44px;
 }
 
 label {
