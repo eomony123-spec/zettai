@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { supabase } from "../../lib/supabase/client";
+import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -15,6 +15,10 @@ export default function SignupPage() {
 
   const handleSignup = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!supabase) {
+      setError("認証設定が未完了です。しばらく待ってから再読み込みしてください。");
+      return;
+    }
     setLoading(true);
     setError("");
     setNotice("");
@@ -41,6 +45,9 @@ export default function SignupPage() {
     <main className="page">
       <section className="card narrow">
         <h1 className="title">新規登録</h1>
+        {!isSupabaseReady ? (
+          <p className="error">認証設定が未完了です。</p>
+        ) : null}
         <form className="form" onSubmit={handleSignup}>
           <label>
             メールアドレス
@@ -65,7 +72,7 @@ export default function SignupPage() {
           </label>
           {error ? <p className="error">{error}</p> : null}
           {notice ? <p className="notice">{notice}</p> : null}
-          <button className="btn gold" type="submit" disabled={loading}>
+          <button className="btn gold" type="submit" disabled={loading || !isSupabaseReady}>
             {loading ? "登録中..." : "登録"}
           </button>
         </form>

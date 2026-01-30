@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "../../lib/supabase/client";
+import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
 type DrawResult = {
   id: string;
@@ -84,6 +84,10 @@ export default function DrawPage() {
   const runIdRef = useRef(0);
 
   useEffect(() => {
+    if (!supabase) {
+      setCheckingAuth(false);
+      return;
+    }
     let mounted = true;
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -267,8 +271,18 @@ export default function DrawPage() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase?.auth.signOut();
   };
+
+  if (!isSupabaseReady) {
+    return (
+      <main className="page">
+        <section className="card">
+          <p className="error">認証設定が未完了です。</p>
+        </section>
+      </main>
+    );
+  }
 
   if (checkingAuth) {
     return (

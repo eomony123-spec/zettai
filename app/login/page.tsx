@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { supabase } from "../../lib/supabase/client";
+import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +14,10 @@ export default function LoginPage() {
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!supabase) {
+      setError("認証設定が未完了です。しばらく待ってから再読み込みしてください。");
+      return;
+    }
     setLoading(true);
     setError("");
     const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -32,6 +36,9 @@ export default function LoginPage() {
     <main className="page">
       <section className="card narrow">
         <h1 className="title">ログイン</h1>
+        {!isSupabaseReady ? (
+          <p className="error">認証設定が未完了です。</p>
+        ) : null}
         <form className="form" onSubmit={handleLogin}>
           <label>
             メールアドレス
@@ -55,7 +62,7 @@ export default function LoginPage() {
             />
           </label>
           {error ? <p className="error">{error}</p> : null}
-          <button className="btn gold" type="submit" disabled={loading}>
+          <button className="btn gold" type="submit" disabled={loading || !isSupabaseReady}>
             {loading ? "ログイン中..." : "ログイン"}
           </button>
         </form>
