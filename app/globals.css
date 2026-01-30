@@ -120,6 +120,11 @@ main {
   width: 100%;
 }
 
+.card.narrow {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
 .title {
   font-family: "Press Start 2P", monospace;
   font-size: clamp(18px, 3.6vw, 24px);
@@ -128,6 +133,16 @@ main {
 
 .muted {
   color: #3a3a3a;
+}
+
+.error {
+  color: #9a2d1b;
+  font-size: clamp(12px, 2.4vw, 14px);
+}
+
+.notice {
+  color: #1b6f2a;
+  font-size: clamp(12px, 2.4vw, 14px);
 }
 
 .btn {
@@ -157,6 +172,13 @@ main {
 .hero-btn {
   font-size: clamp(16px, 4vw, 28px);
   padding: clamp(12px, 3vw, 18px) clamp(14px, 3vw, 22px);
+}
+
+.auth-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .actions {

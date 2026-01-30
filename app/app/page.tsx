@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { supabase } from "../../lib/supabase/client";
 
 type DrawResult = {
   id: string;
@@ -53,6 +55,8 @@ const generateNumbers = (length: number) => {
 };
 
 export default function DrawPage() {
+  const router = useRouter();
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [runningLoto6, setRunningLoto6] = useState(false);
   const [runningLoto7, setRunningLoto7] = useState(false);
   const [runningMini, setRunningMini] = useState(false);
@@ -78,6 +82,34 @@ export default function DrawPage() {
   const [historyNumbers4, setHistoryNumbers4] = useState<NumbersResult[]>([]);
   const [historyNumbers3, setHistoryNumbers3] = useState<NumbersResult[]>([]);
   const runIdRef = useRef(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (!data.session) {
+        router.replace("/login");
+        return;
+      }
+      setCheckingAuth(false);
+    };
+
+    checkSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!session) {
+          router.replace("/login");
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [router]);
 
   useEffect(() => {
     try {
@@ -234,6 +266,20 @@ export default function DrawPage() {
     }, total);
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (checkingAuth) {
+    return (
+      <main className="page">
+        <section className="card">
+          <p className="muted">認証確認中...</p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="page">
       <header className="topbar">
@@ -253,9 +299,14 @@ export default function DrawPage() {
           <span className="pipe" />
           <span className="pipe" />
         </div>
-        <Link className="btn gold" href="/">
-          戻る
-        </Link>
+        <div className="auth-actions">
+          <Link className="btn gold" href="/">
+            戻る
+          </Link>
+          <button className="btn" type="button" onClick={handleLogout}>
+            ログアウト
+          </button>
+        </div>
       </header>
 
       <section className="card" id="loto6">
