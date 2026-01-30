@@ -90,6 +90,7 @@ export default function DrawPage() {
     }
     let mounted = true;
     const checkSession = async () => {
+      if (!supabase) return;
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       if (!data.session) {
