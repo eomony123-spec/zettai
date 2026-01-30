@@ -5,6 +5,19 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
+const formatAuthError = (message: string) => {
+  if (message.includes("User already registered")) {
+    return "このメールアドレスは既に登録されています。ログインしてください。";
+  }
+  if (message.includes("Password should be at least")) {
+    return "パスワードが短すぎます。6文字以上で設定してください。";
+  }
+  if (message.includes("Invalid email")) {
+    return "メールアドレスの形式が正しくありません。";
+  }
+  return `登録エラー: ${message}`;
+};
+
 export default function SignupPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -27,7 +40,7 @@ export default function SignupPage() {
       password
     });
     if (signUpError) {
-      setError("登録に失敗しました。別のメールアドレスをお試しください。");
+      setError(formatAuthError(signUpError.message));
       setLoading(false);
       return;
     }

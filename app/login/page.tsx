@@ -5,6 +5,22 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
+const formatAuthError = (message: string) => {
+  if (message.includes("Invalid login credentials")) {
+    return "メールアドレスまたはパスワードが違います。";
+  }
+  if (message.includes("Email not confirmed")) {
+    return "メール確認が完了していません。確認メールをご確認ください。";
+  }
+  if (message.includes("User already registered")) {
+    return "このメールアドレスは既に登録されています。";
+  }
+  if (message.includes("Password should be at least")) {
+    return "パスワードが短すぎます。6文字以上で設定してください。";
+  }
+  return `認証エラー: ${message}`;
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -25,7 +41,7 @@ export default function LoginPage() {
       password
     });
     if (signInError) {
-      setError("ログインに失敗しました。メールとパスワードを確認してください。");
+      setError(formatAuthError(signInError.message));
       setLoading(false);
       return;
     }

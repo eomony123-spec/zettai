@@ -4,6 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
+const formatAuthError = (message: string) => {
+  if (message.includes("Password should be at least")) {
+    return "パスワードが短すぎます。6文字以上で設定してください。";
+  }
+  return `更新エラー: ${message}`;
+};
+
 export default function UpdatePasswordPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,7 +37,7 @@ export default function UpdatePasswordPage() {
     });
 
     if (updateError) {
-      setError("更新に失敗しました。もう一度お試しください。");
+      setError(formatAuthError(updateError.message));
       setLoading(false);
       return;
     }

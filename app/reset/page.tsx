@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useState } from "react";
 import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
+const formatAuthError = (message: string) => {
+  if (message.includes("Email rate limit exceeded")) {
+    return "送信回数が多すぎます。時間をおいて再度お試しください。";
+  }
+  if (message.includes("User not found")) {
+    return "このメールアドレスは登録されていません。";
+  }
+  return `送信エラー: ${message}`;
+};
+
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +36,7 @@ export default function ResetPasswordPage() {
     });
 
     if (resetError) {
-      setError("メールの送信に失敗しました。時間をおいて再度お試しください。");
+      setError(formatAuthError(resetError.message));
       setLoading(false);
       return;
     }
