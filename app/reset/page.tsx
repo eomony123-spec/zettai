@@ -1,18 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
-export default function LoginPage() {
-  const router = useRouter();
+export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const handleLogin = async (event: React.FormEvent) => {
+  const handleReset = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!supabase) {
       setError("認証設定が未完了です。しばらく待ってから再読み込みしてください。");
@@ -20,26 +18,31 @@ export default function LoginPage() {
     }
     setLoading(true);
     setError("");
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password
+    setNotice("");
+
+    const redirectTo = `${window.location.origin}/update-password`;
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo
     });
-    if (signInError) {
-      setError("ログインに失敗しました。メールとパスワードを確認してください。");
+
+    if (resetError) {
+      setError("メールの送信に失敗しました。時間をおいて再度お試しください。");
       setLoading(false);
       return;
     }
-    router.push("/app");
+
+    setNotice("再設定メールを送信しました。メールをご確認ください。");
+    setLoading(false);
   };
 
   return (
     <main className="page">
       <section className="card narrow">
-        <h1 className="title">ログイン</h1>
+        <h1 className="title">パスワード再設定</h1>
         {!isSupabaseReady ? (
           <p className="error">認証設定が未完了です。</p>
         ) : null}
-        <form className="form" onSubmit={handleLogin}>
+        <form className="form" onSubmit={handleReset}>
           <label>
             メールアドレス
             <input
@@ -50,27 +53,14 @@ export default function LoginPage() {
               required
             />
           </label>
-          <label>
-            パスワード
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="********"
-              required
-              minLength={6}
-            />
-          </label>
           {error ? <p className="error">{error}</p> : null}
+          {notice ? <p className="notice">{notice}</p> : null}
           <button className="btn gold" type="submit" disabled={loading || !isSupabaseReady}>
-            {loading ? "ログイン中..." : "ログイン"}
+            {loading ? "送信中..." : "再設定メールを送る"}
           </button>
         </form>
         <p className="muted">
-          アカウントがない方は <Link href="/signup">新規登録</Link>
-        </p>
-        <p className="muted">
-          <Link href="/reset">パスワードを忘れた方はこちら</Link>
+          <Link href="/login">ログインへ戻る</Link>
         </p>
       </section>
     </main>
