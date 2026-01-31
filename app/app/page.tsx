@@ -1,9 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { isSupabaseReady, supabase } from "../../lib/supabase/client";
 
 type DrawResult = {
   id: string;
@@ -17,6 +14,9 @@ type NumbersResult = {
   createdAt: string;
   digits: number[];
 };
+
+const ACCESS_KEY = "zettai-access-granted";
+const REQUIRED_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD ?? "";
 
 const LOTO6_HISTORY_KEY = "zettai-draw-history";
 const LOTO7_HISTORY_KEY = "zettai-loto7-history";
@@ -55,8 +55,9 @@ const generateNumbers = (length: number) => {
 };
 
 export default function DrawPage() {
-  const router = useRouter();
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [unlocked, setUnlocked] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [runningLoto6, setRunningLoto6] = useState(false);
   const [runningLoto7, setRunningLoto7] = useState(false);
   const [runningMini, setRunningMini] = useState(false);
@@ -84,39 +85,14 @@ export default function DrawPage() {
   const runIdRef = useRef(0);
 
   useEffect(() => {
-    if (!supabase) {
-      setCheckingAuth(false);
-      return;
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem(ACCESS_KEY) === "true") {
+      setUnlocked(true);
     }
-    let mounted = true;
-    const checkSession = async () => {
-      if (!supabase) return;
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      if (!data.session) {
-        router.replace("/login");
-        return;
-      }
-      setCheckingAuth(false);
-    };
-
-    checkSession();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (!session) {
-          router.replace("/login");
-        }
-      }
-    );
-
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, [router]);
+  }, []);
 
   useEffect(() => {
+    if (!unlocked) return;
     try {
       const rawLoto6 = localStorage.getItem(LOTO6_HISTORY_KEY);
       if (rawLoto6) {
@@ -150,7 +126,22 @@ export default function DrawPage() {
       setHistoryNumbers4([]);
       setHistoryNumbers3([]);
     }
-  }, []);
+  }, [unlocked]);
+
+  const handleUnlock = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!REQUIRED_PASSWORD) {
+      setPasswordError("パスワードが設定されていません。運営に連絡してください。");
+      return;
+    }
+    if (password === REQUIRED_PASSWORD) {
+      localStorage.setItem(ACCESS_KEY, "true");
+      setUnlocked(true);
+      setPasswordError("");
+      return;
+    }
+    setPasswordError("パスワードが違います。");
+  };
 
   const pushHistory = <T,>(
     key: string,
@@ -271,25 +262,46 @@ export default function DrawPage() {
     }, total);
   };
 
-  const handleLogout = async () => {
-    await supabase?.auth.signOut();
-  };
-
-  if (!isSupabaseReady) {
+  if (!unlocked) {
     return (
       <main className="page">
-        <section className="card">
-          <p className="error">認証設定が未完了です。</p>
-        </section>
-      </main>
-    );
-  }
+        <header className="topbar">
+          <div className="decor-row">
+            <span className="coin" />
+            <span className="block" />
+            <span className="block" />
+            <span className="coin" />
+          </div>
+          <h1 className="app-title">絶対当たらないくん</h1>
+          <p className="subtitle">
+            宝くじの当選予想を生成する娯楽ツールです。
+            <br />
+            当選を保証しません。
+          </p>
+          <div className="pipe-row">
+            <span className="pipe" />
+            <span className="pipe" />
+          </div>
+        </header>
 
-  if (checkingAuth) {
-    return (
-      <main className="page">
-        <section className="card">
-          <p className="muted">認証確認中...</p>
+        <section className="card narrow">
+          <h2 className="title">パスワード入力</h2>
+          <form className="form" onSubmit={handleUnlock}>
+            <label>
+              パスワード
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="********"
+                required
+              />
+            </label>
+            {passwordError ? <p className="error">{passwordError}</p> : null}
+            <button className="btn gold" type="submit">
+              入る
+            </button>
+          </form>
         </section>
       </main>
     );
@@ -313,14 +325,6 @@ export default function DrawPage() {
         <div className="pipe-row">
           <span className="pipe" />
           <span className="pipe" />
-        </div>
-        <div className="auth-actions">
-          <Link className="btn gold" href="/">
-            戻る
-          </Link>
-          <button className="btn" type="button" onClick={handleLogout}>
-            ログアウト
-          </button>
         </div>
       </header>
 
@@ -532,3 +536,4 @@ export default function DrawPage() {
     </main>
   );
 }
+
