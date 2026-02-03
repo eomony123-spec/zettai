@@ -38,7 +38,9 @@ const LOTO7_HISTORY_KEY = "zettai-loto7-history";
 const MINI_HISTORY_KEY = "zettai-mini-history";
 const NUMBERS4_HISTORY_KEY = "zettai-numbers4-history";
 const NUMBERS3_HISTORY_KEY = "zettai-numbers3-history";
-const MAX_HISTORY = 50;`r`nconst LOTO6_RECENT_COUNT = 24;`r`nconst LOTO6_RECENT_COUNT = 24;
+const MAX_HISTORY = 50;
+const LOTO6_RECENT_COUNT = 24;
+const LOTO7_RECENT_COUNT = 24;
 
 const secureRandomInt = (maxExclusive: number) => {
   if (maxExclusive <= 0) return 0;
@@ -318,6 +320,16 @@ export default function DrawPage() {
   const [loto6Data, setLoto6Data] = useState<LotteryRow[]>([]);
   const [loto6Status, setLoto6Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto6StatusMessage, setLoto6StatusMessage] = useState("");
+  const [loto7Rules, setLoto7Rules] = useState<TrendRuleFlags>({
+    recent24: true,
+    carry: true,
+    adjacent: true,
+    lastDigit: true
+  });
+  const [loto7Data, setLoto7Data] = useState<LotteryRow[]>([]);
+  const [loto7Status, setLoto7Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [loto7StatusMessage, setLoto7StatusMessage] = useState("");
+
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -402,6 +414,46 @@ export default function DrawPage() {
     };
   }, [unlocked]);
 
+  useEffect(() => {
+    if (!unlocked) return;
+    let active = true;
+
+    const loadLoto7 = async () => {
+      try {
+        setLoto7Status("loading");
+        setLoto7StatusMessage("");
+        const response = await fetch(
+          "/.netlify/functions/lottery-csv?game=loto7"
+        );
+        if (!response.ok) {
+          throw new Error("CSV取得に失敗しました。");
+        }
+        const text = await response.text();
+        const rows = parseLotteryCsv(text, 7, 37);
+        const sorted = [...rows].sort((a, b) => b.drawNo - a.drawNo);
+        if (!active) return;
+        setLoto7Data(sorted);
+        if (sorted.length === 0) {
+          setLoto7Status("error");
+          setLoto7StatusMessage("データが見つかりませんでした。");
+        } else {
+          setLoto7Status("ready");
+          setLoto7StatusMessage("");
+        }
+      } catch (error) {
+        if (!active) return;
+        setLoto7Status("error");
+        setLoto7StatusMessage("直近データを取得できませんでした。");
+      }
+    };
+
+    loadLoto7();
+
+    return () => {
+      active = false;
+    };
+  }, [unlocked]);
+
   const handleUnlock = (event: React.FormEvent) => {
     event.preventDefault();
     if (!REQUIRED_PASSWORD) {
@@ -438,7 +490,15 @@ export default function DrawPage() {
     const total = 800 + secureRandomInt(1200);
     setTimeout(() => {
       if (runIdRef.current !== currentRun) return;
-      const latestLoto6 = loto6Data[0] ?? null;\r\n      const recentLoto6 = loto6Data.slice(0, LOTO6_RECENT_COUNT);\r\n      const next = generateDrawWithRules(\r\n        43,\r\n        6,\r\n        latestLoto6,\r\n        recentLoto6,\r\n        loto6Rules\r\n      );
+      const latestLoto6 = loto6Data[0] ?? null;
+      const recentLoto6 = loto6Data.slice(0, LOTO6_RECENT_COUNT);
+      const next = generateDrawWithRules(
+        43,
+        6,
+        latestLoto6,
+        recentLoto6,
+        loto6Rules
+      );
       setResultLoto6(next);
       setRunningLoto6(false);
       pushHistory(LOTO6_HISTORY_KEY, historyLoto6, setHistoryLoto6, {
@@ -460,7 +520,15 @@ export default function DrawPage() {
     const total = 800 + secureRandomInt(1200);
     setTimeout(() => {
       if (runIdRef.current !== currentRun) return;
-      const next = generateDraw(37, 7);
+      const latestLoto7 = loto7Data[0] ?? null;
+      const recentLoto7 = loto7Data.slice(0, LOTO7_RECENT_COUNT);
+      const next = generateDrawWithRules(
+        37,
+        7,
+        latestLoto7,
+        recentLoto7,
+        loto7Rules
+      );
       setResultLoto7(next);
       setRunningLoto7(false);
       pushHistory(LOTO7_HISTORY_KEY, historyLoto7, setHistoryLoto7, {
@@ -688,6 +756,72 @@ export default function DrawPage() {
 
       <section className="card" id="loto7">
         <h2 className="title">ロト7 当選予想</h2>
+
+        <div className="rule-panel">
+          <div className="rule-title">傾向ルール（ロト7）</div>
+          <div className="rule-list">
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto7Rules.recent24}
+                onChange={() =>
+                  setLoto7Rules((prev) => ({
+                    ...prev,
+                    recent24: !prev.recent24
+                  }))
+                }
+              />
+              直近24回で3〜4回出た数字を重視
+            </label>
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto7Rules.carry}
+                onChange={() =>
+                  setLoto7Rules((prev) => ({
+                    ...prev,
+                    carry: !prev.carry
+                  }))
+                }
+              />
+              前回の当選数字を1〜2個残す（引っ張り）
+            </label>
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto7Rules.adjacent}
+                onChange={() =>
+                  setLoto7Rules((prev) => ({
+                    ...prev,
+                    adjacent: !prev.adjacent
+                  }))
+                }
+              />
+              前回数字の前後（±1）を候補に入れる
+            </label>
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto7Rules.lastDigit}
+                onChange={() =>
+                  setLoto7Rules((prev) => ({
+                    ...prev,
+                    lastDigit: !prev.lastDigit
+                  }))
+                }
+              />
+              下一桁が同じ数字ペアを混ぜる
+            </label>
+          </div>
+          <p className="rule-note">
+            {loto7Status === "loading"
+              ? "直近データ取得中..."
+              : loto7Status === "error"
+                ? loto7StatusMessage
+                : `直近${Math.min(loto7Data.length, LOTO7_RECENT_COUNT)}回を参照中`}
+          </p>
+        </div>
+
 
         <div className="result">
           <div className="numbers">
