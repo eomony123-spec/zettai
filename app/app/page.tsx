@@ -15,6 +15,21 @@ type NumbersResult = {
   digits: number[];
 };
 
+type TrendRuleFlags = {
+  recent24: boolean;
+  carry: boolean;
+  adjacent: boolean;
+  lastDigit: boolean;
+};
+
+type LotteryRow = {
+  drawNo: number;
+  drawDate: string;
+  main: number[];
+  bonus?: number;
+};
+
+
 const ACCESS_KEY = "zettai-access-granted";
 const REQUIRED_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD ?? "";
 
@@ -23,7 +38,7 @@ const LOTO7_HISTORY_KEY = "zettai-loto7-history";
 const MINI_HISTORY_KEY = "zettai-mini-history";
 const NUMBERS4_HISTORY_KEY = "zettai-numbers4-history";
 const NUMBERS3_HISTORY_KEY = "zettai-numbers3-history";
-const MAX_HISTORY = 50;
+const MAX_HISTORY = 50;`r`nconst LOTO6_RECENT_COUNT = 24;`r`nconst LOTO6_RECENT_COUNT = 24;
 
 const secureRandomInt = (maxExclusive: number) => {
   if (maxExclusive <= 0) return 0;
@@ -52,6 +67,217 @@ const generateDraw = (maxNumber: number, mainCount: number) => {
 
 const generateNumbers = (length: number) => {
   return Array.from({ length }, () => secureRandomInt(10));
+};
+const secureRandomFloat = () => {
+  const buffer = new Uint32Array(1);
+  crypto.getRandomValues(buffer);
+  return buffer[0] / 0x100000000;
+};
+
+const parseCsvRow = (line: string) => {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === "\"") {
+      if (inQuotes && line[i + 1] === "\"") {
+        current += "\"";
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  result.push(current);
+  return result.map((value) => value.trim());
+};
+
+const parseLotteryCsv = (
+  text: string,
+  mainCount: number,
+  maxNumber: number
+): LotteryRow[] => {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const header = parseCsvRow(lines[0]).map((value) => value.replace(/\s/g, ""));
+  const drawNoIndex = header.findIndex((value) => value.includes("回"));
+  const dateIndex = header.findIndex((value) => value.includes("日"));
+  let mainIndices = header
+    .map((value, index) => ({ value, index }))
+    .filter(
+      (item) =>
+        item.value.includes("本数字") ||
+        item.value.startsWith("数字") ||
+        item.value.includes("当選数字")
+    )
+    .map((item) => item.index);
+  let bonusIndex = header.findIndex(
+    (value) => value.includes("ボーナス") || value.includes("補助")
+  );
+
+  if (mainIndices.length < mainCount) {
+    mainIndices = [];
+    bonusIndex = -1;
+  }
+
+  const rows: LotteryRow[] = [];
+
+  for (let i = 1; i < lines.length; i += 1) {
+    const columns = parseCsvRow(lines[i]);
+    if (columns.length === 0) continue;
+
+    const drawNo =
+      drawNoIndex >= 0 ? parseInt(columns[drawNoIndex], 10) : NaN;
+    const drawDate = dateIndex >= 0 ? columns[dateIndex] : "";
+    let main: number[] = [];
+    let bonus: number | undefined;
+
+    if (mainIndices.length >= mainCount) {
+      main = mainIndices
+        .slice(0, mainCount)
+        .map((index) => parseInt(columns[index], 10))
+        .filter((value) => Number.isFinite(value));
+      if (bonusIndex >= 0) {
+        const parsedBonus = parseInt(columns[bonusIndex], 10);
+        if (Number.isFinite(parsedBonus)) bonus = parsedBonus;
+      }
+    } else {
+      const numericIndices = columns
+        .map((value, index) => ({
+          index,
+          value: /^\d+$/.test(value) ? parseInt(value, 10) : null
+        }))
+        .filter((item) => item.value !== null);
+      const numericAfterDate =
+        dateIndex >= 0
+          ? numericIndices.filter((item) => item.index > dateIndex)
+          : numericIndices;
+      const selected = numericAfterDate.slice(0, mainCount);
+      main = selected.map((item) => item.value as number);
+      const bonusCandidate = numericAfterDate[mainCount];
+      if (bonusCandidate) bonus = bonusCandidate.value as number;
+    }
+
+    if (main.length !== mainCount) continue;
+    if (main.some((value) => value < 1 || value > maxNumber)) continue;
+
+    rows.push({
+      drawNo: Number.isFinite(drawNo) ? drawNo : rows.length,
+      drawDate,
+      main,
+      bonus
+    });
+  }
+
+  return rows;
+};
+
+const buildCandidateSet = (
+  latest: LotteryRow | null,
+  recent: LotteryRow[],
+  maxNumber: number,
+  rules: TrendRuleFlags
+) => {
+  const candidates = new Set<number>();
+
+  if (rules.recent24 && recent.length > 0) {
+    const counts = new Map<number, number>();
+    recent.forEach((draw) => {
+      draw.main.forEach((value) => {
+        counts.set(value, (counts.get(value) ?? 0) + 1);
+      });
+    });
+    counts.forEach((count, value) => {
+      if (count >= 3 && count <= 4) candidates.add(value);
+    });
+  }
+
+  if (!latest) return candidates;
+
+  if (rules.carry) {
+    latest.main.forEach((value) => candidates.add(value));
+  }
+
+  if (rules.adjacent) {
+    latest.main.forEach((value) => {
+      if (value > 1) candidates.add(value - 1);
+      if (value < maxNumber) candidates.add(value + 1);
+    });
+  }
+
+  if (rules.lastDigit) {
+    const digits = new Set(latest.main.map((value) => value % 10));
+    for (let value = 1; value <= maxNumber; value += 1) {
+      if (digits.has(value % 10)) candidates.add(value);
+    }
+  }
+
+  return candidates;
+};
+
+const weightedSample = (
+  numbers: number[],
+  weights: number[],
+  count: number
+) => {
+  const poolNumbers = [...numbers];
+  const poolWeights = [...weights];
+  const selected: number[] = [];
+
+  for (let i = 0; i < count && poolNumbers.length > 0; i += 1) {
+    const total = poolWeights.reduce((sum, value) => sum + value, 0);
+    if (total <= 0) {
+      selected.push(...poolNumbers.slice(0, count - i));
+      break;
+    }
+
+    let target = secureRandomFloat() * total;
+    let index = 0;
+    for (index = 0; index < poolWeights.length; index += 1) {
+      target -= poolWeights[index];
+      if (target <= 0) break;
+    }
+
+    selected.push(poolNumbers[index]);
+    poolNumbers.splice(index, 1);
+    poolWeights.splice(index, 1);
+  }
+
+  return selected;
+};
+
+const generateDrawWithRules = (
+  maxNumber: number,
+  mainCount: number,
+  latest: LotteryRow | null,
+  recent: LotteryRow[],
+  rules: TrendRuleFlags
+) => {
+  const rulesEnabled =
+    rules.recent24 || rules.carry || rules.adjacent || rules.lastDigit;
+  if (!rulesEnabled || !latest || recent.length === 0) {
+    return generateDraw(maxNumber, mainCount);
+  }
+
+  const candidates = buildCandidateSet(latest, recent, maxNumber, rules);
+  const numbers = Array.from({ length: maxNumber }, (_, i) => i + 1);
+  const weights = numbers.map((value) => (candidates.has(value) ? 3 : 1));
+  const main = weightedSample(numbers, weights, mainCount).sort((a, b) => a - b);
+  const remaining = numbers.filter((value) => !main.includes(value));
+  const bonus = remaining.length
+    ? remaining[secureRandomInt(remaining.length)]
+    : 0;
+
+  return { main, bonus };
 };
 
 export default function DrawPage() {
@@ -83,6 +309,15 @@ export default function DrawPage() {
   const [historyNumbers4, setHistoryNumbers4] = useState<NumbersResult[]>([]);
   const [historyNumbers3, setHistoryNumbers3] = useState<NumbersResult[]>([]);
   const runIdRef = useRef(0);
+  const [loto6Rules, setLoto6Rules] = useState<TrendRuleFlags>({
+    recent24: true,
+    carry: true,
+    adjacent: true,
+    lastDigit: true
+  });
+  const [loto6Data, setLoto6Data] = useState<LotteryRow[]>([]);
+  const [loto6Status, setLoto6Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [loto6StatusMessage, setLoto6StatusMessage] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -127,6 +362,45 @@ export default function DrawPage() {
       setHistoryNumbers3([]);
     }
   }, [unlocked]);
+  useEffect(() => {
+    if (!unlocked) return;
+    let active = true;
+
+    const loadLoto6 = async () => {
+      try {
+        setLoto6Status("loading");
+        setLoto6StatusMessage("");
+        const response = await fetch(
+          "/.netlify/functions/lottery-csv?game=loto6"
+        );
+        if (!response.ok) {
+          throw new Error("CSV取得に失敗しました。");
+        }
+        const text = await response.text();
+        const rows = parseLotteryCsv(text, 6, 43);
+        const sorted = [...rows].sort((a, b) => b.drawNo - a.drawNo);
+        if (!active) return;
+        setLoto6Data(sorted);
+        if (sorted.length === 0) {
+          setLoto6Status("error");
+          setLoto6StatusMessage("データが見つかりませんでした。");
+        } else {
+          setLoto6Status("ready");
+          setLoto6StatusMessage("");
+        }
+      } catch (error) {
+        if (!active) return;
+        setLoto6Status("error");
+        setLoto6StatusMessage("直近データを取得できませんでした。");
+      }
+    };
+
+    loadLoto6();
+
+    return () => {
+      active = false;
+    };
+  }, [unlocked]);
 
   const handleUnlock = (event: React.FormEvent) => {
     event.preventDefault();
@@ -164,7 +438,7 @@ export default function DrawPage() {
     const total = 800 + secureRandomInt(1200);
     setTimeout(() => {
       if (runIdRef.current !== currentRun) return;
-      const next = generateDraw(43, 6);
+      const latestLoto6 = loto6Data[0] ?? null;\r\n      const recentLoto6 = loto6Data.slice(0, LOTO6_RECENT_COUNT);\r\n      const next = generateDrawWithRules(\r\n        43,\r\n        6,\r\n        latestLoto6,\r\n        recentLoto6,\r\n        loto6Rules\r\n      );
       setResultLoto6(next);
       setRunningLoto6(false);
       pushHistory(LOTO6_HISTORY_KEY, historyLoto6, setHistoryLoto6, {
@@ -330,6 +604,70 @@ export default function DrawPage() {
 
       <section className="card" id="loto6">
         <h2 className="title">ロト6 当選予想</h2>
+        <div className="rule-panel">
+          <div className="rule-title">傾向ルール（ロト6）</div>
+          <div className="rule-list">
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto6Rules.recent24}
+                onChange={() =>
+                  setLoto6Rules((prev) => ({
+                    ...prev,
+                    recent24: !prev.recent24
+                  }))
+                }
+              />
+              直近24回で3〜4回出た数字を重視
+            </label>
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto6Rules.carry}
+                onChange={() =>
+                  setLoto6Rules((prev) => ({
+                    ...prev,
+                    carry: !prev.carry
+                  }))
+                }
+              />
+              前回の当選数字を1〜2個残す（引っ張り）
+            </label>
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto6Rules.adjacent}
+                onChange={() =>
+                  setLoto6Rules((prev) => ({
+                    ...prev,
+                    adjacent: !prev.adjacent
+                  }))
+                }
+              />
+              前回数字の前後（±1）を候補に入れる
+            </label>
+            <label className="rule-item">
+              <input
+                type="checkbox"
+                checked={loto6Rules.lastDigit}
+                onChange={() =>
+                  setLoto6Rules((prev) => ({
+                    ...prev,
+                    lastDigit: !prev.lastDigit
+                  }))
+                }
+              />
+              下一桁が同じ数字ペアを混ぜる
+            </label>
+          </div>
+          <p className="rule-note">
+            {loto6Status === "loading"
+              ? "直近データ取得中..."
+              : loto6Status === "error"
+                ? loto6StatusMessage
+                : `直近${Math.min(loto6Data.length, LOTO6_RECENT_COUNT)}回を参照中`}
+          </p>
+        </div>
 
         <div className="result">
           <div className="numbers">
@@ -536,4 +874,12 @@ export default function DrawPage() {
     </main>
   );
 }
+
+
+
+
+
+
+
+
 

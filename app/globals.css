@@ -259,3 +259,42 @@ label {
   gap: 10px;
   margin-top: 12px;
 }
+
+
+.rule-panel {
+  border: 3px solid var(--border);
+  padding: clamp(10px, 2vw, 14px);
+  margin: 6px 0 12px;
+  background: #fff2c7;
+}
+
+.rule-title {
+  font-size: clamp(12px, 2.6vw, 16px);
+  margin-bottom: 6px;
+}
+
+.rule-list {
+  display: grid;
+  gap: 8px;
+}
+
+.rule-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: clamp(10px, 2.4vw, 12px);
+  line-height: 1.6;
+}
+
+.rule-item input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.rule-note {
+  margin: 8px 0 0;
+  font-size: clamp(10px, 2.2vw, 12px);
+  color: #3a3a3a;
+}
+
