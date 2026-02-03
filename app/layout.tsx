@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "絶対当たらないくん",
+  title: "天才くん",
   description: "ロト6風の抽選体験で数字を生成する娯楽ツール。"
 };
 
@@ -17,3 +17,4 @@ export default function RootLayout({
     </html>
   );
 }
+

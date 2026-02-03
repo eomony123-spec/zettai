@@ -614,7 +614,7 @@ export default function DrawPage() {
             <span className="block" />
             <span className="coin" />
           </div>
-          <h1 className="app-title">絶対当たらないくん</h1>
+          <h1 className="app-title">天才くん</h1>
           <p className="subtitle">
             宝くじの当選予想を生成する娯楽ツールです。
             <br />
@@ -658,7 +658,7 @@ export default function DrawPage() {
           <span className="block" />
           <span className="coin" />
         </div>
-        <h1 className="app-title">絶対当たらないくん</h1>
+        <h1 className="app-title">天才くん</h1>
         <p className="subtitle">
           宝くじの当選予想を生成する娯楽ツールです。
           <br />
@@ -1008,6 +1008,7 @@ export default function DrawPage() {
     </main>
   );
 }
+
 
 
 
