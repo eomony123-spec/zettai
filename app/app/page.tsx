@@ -673,7 +673,6 @@ export default function DrawPage() {
       <section className="card" id="loto6">
         <h2 className="title">ロト6 当選予想</h2>
         <div className="rule-panel">
-          <div className="rule-title">傾向ルール（ロト6）</div>
           <div className="rule-list">
             <label className="rule-item">
               <input
@@ -686,7 +685,7 @@ export default function DrawPage() {
                   }))
                 }
               />
-              直近24回で3〜4回出た数字を重視
+              達人式
             </label>
             <label className="rule-item">
               <input
@@ -699,45 +698,27 @@ export default function DrawPage() {
                   }))
                 }
               />
-              前回の当選数字を1〜2個残す（引っ張り）
+              乱数式
             </label>
             <label className="rule-item">
               <input
                 type="checkbox"
                 checked={loto6Rules.adjacent}
                 onChange={() =>
-                  setLoto6Rules((prev) => ({
-                    ...prev,
-                    adjacent: !prev.adjacent
-                  }))
+                  setLoto6Rules((prev) => {
+                    const next = !prev.adjacent;
+                    return {
+                      ...prev,
+                      adjacent: next,
+                      lastDigit: next
+                    };
+                  })
                 }
               />
-              前回数字の前後（±1）を候補に入れる
-            </label>
-            <label className="rule-item">
-              <input
-                type="checkbox"
-                checked={loto6Rules.lastDigit}
-                onChange={() =>
-                  setLoto6Rules((prev) => ({
-                    ...prev,
-                    lastDigit: !prev.lastDigit
-                  }))
-                }
-              />
-              下一桁が同じ数字ペアを混ぜる
+              wheel
             </label>
           </div>
-          <p className="rule-note">
-            {loto6Status === "loading"
-              ? "直近データ取得中..."
-              : loto6Status === "error"
-                ? loto6StatusMessage
-                : `直近${Math.min(loto6Data.length, LOTO6_RECENT_COUNT)}回を参照中`}
-          </p>
-        </div>
-
-        <div className="result">
+        </div>`r`n`r`n        <div className="result">
           <div className="numbers">
             {(resultLoto6?.main ?? Array(6).fill("--")).map((value, index) => (
               <span className="ball" key={`${value}-${index}`}>
@@ -758,7 +739,6 @@ export default function DrawPage() {
         <h2 className="title">ロト7 当選予想</h2>
 
         <div className="rule-panel">
-          <div className="rule-title">傾向ルール（ロト7）</div>
           <div className="rule-list">
             <label className="rule-item">
               <input
@@ -771,7 +751,7 @@ export default function DrawPage() {
                   }))
                 }
               />
-              直近24回で3〜4回出た数字を重視
+              達人式
             </label>
             <label className="rule-item">
               <input
@@ -784,46 +764,27 @@ export default function DrawPage() {
                   }))
                 }
               />
-              前回の当選数字を1〜2個残す（引っ張り）
+              乱数式
             </label>
             <label className="rule-item">
               <input
                 type="checkbox"
                 checked={loto7Rules.adjacent}
                 onChange={() =>
-                  setLoto7Rules((prev) => ({
-                    ...prev,
-                    adjacent: !prev.adjacent
-                  }))
+                  setLoto7Rules((prev) => {
+                    const next = !prev.adjacent;
+                    return {
+                      ...prev,
+                      adjacent: next,
+                      lastDigit: next
+                    };
+                  })
                 }
               />
-              前回数字の前後（±1）を候補に入れる
-            </label>
-            <label className="rule-item">
-              <input
-                type="checkbox"
-                checked={loto7Rules.lastDigit}
-                onChange={() =>
-                  setLoto7Rules((prev) => ({
-                    ...prev,
-                    lastDigit: !prev.lastDigit
-                  }))
-                }
-              />
-              下一桁が同じ数字ペアを混ぜる
+              wheel
             </label>
           </div>
-          <p className="rule-note">
-            {loto7Status === "loading"
-              ? "直近データ取得中..."
-              : loto7Status === "error"
-                ? loto7StatusMessage
-                : `直近${Math.min(loto7Data.length, LOTO7_RECENT_COUNT)}回を参照中`}
-          </p>
-        </div>
-
-
-        <div className="result">
+        </div>`r`n`r`n        <div className="result">
           <div className="numbers">
             {(resultLoto7?.main ?? Array(7).fill("--")).map((value, index) => (
               <span className="ball" key={`${value}-${index}`}>
@@ -1008,6 +969,8 @@ export default function DrawPage() {
     </main>
   );
 }
+
+
 
 
 
