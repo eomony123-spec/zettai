@@ -718,7 +718,9 @@ export default function DrawPage() {
               wheel
             </label>
           </div>
-        </div>`r`n`r`n        <div className="result">
+        </div>
+
+        <div className="result">
           <div className="numbers">
             {(resultLoto6?.main ?? Array(6).fill("--")).map((value, index) => (
               <span className="ball" key={`${value}-${index}`}>
@@ -784,7 +786,9 @@ export default function DrawPage() {
               wheel
             </label>
           </div>
-        </div>`r`n`r`n        <div className="result">
+        </div>
+
+        <div className="result">
           <div className="numbers">
             {(resultLoto7?.main ?? Array(7).fill("--")).map((value, index) => (
               <span className="ball" key={`${value}-${index}`}>
@@ -969,6 +973,7 @@ export default function DrawPage() {
     </main>
   );
 }
+
 
 
 
