@@ -40,7 +40,7 @@ type LotoModeFlags = {
   wheel: boolean;
 };
 
-type Loto6WheelResult = {
+type WheelResult = {
   expertCandidates: number[];
   randomCandidates: number[];
   pool: number[];
@@ -68,6 +68,15 @@ const LOTO6_MAX_CONSECUTIVE_PAIRS = 1;
 const LOTO6_WHEEL_MIN_LINES = 1;
 const LOTO6_WHEEL_MAX_LINES = 10;
 const LOTO6_MAX_OVERLAP_BETWEEN_LINES = 4;
+const LOTO7_POOL_EXPERT_COUNT = 5;
+const LOTO7_POOL_RANDOM_COUNT = 7;
+const LOTO7_BUCKET_MIN = 3;
+const LOTO7_BUCKET_MAX = 5;
+const LOTO7_MAX_BIRTHDAY_RANGE = 8;
+const LOTO7_MAX_CONSECUTIVE_PAIRS = 2;
+const LOTO7_WHEEL_MIN_LINES = 1;
+const LOTO7_WHEEL_MAX_LINES = 10;
+const LOTO7_MAX_OVERLAP_BETWEEN_LINES = 5;
 const FULL_TREND_RULES: TrendRuleFlags = {
   recent24: true,
   carry: true,
@@ -490,6 +499,124 @@ const buildLoto6WheelTickets = (pool: number[], lines: number) => {
   return tickets;
 };
 
+const passesLoto7PoolChecks = (pool: number[]) => {
+  const buckets = [0, 0, 0];
+  pool.forEach((value) => {
+    if (value <= 12) {
+      buckets[0] += 1;
+    } else if (value <= 24) {
+      buckets[1] += 1;
+    } else {
+      buckets[2] += 1;
+    }
+  });
+
+  const bucketBalanced = buckets.every(
+    (count) => count >= LOTO7_BUCKET_MIN && count <= LOTO7_BUCKET_MAX
+  );
+  if (!bucketBalanced) return false;
+
+  const birthdayRangeCount = pool.filter((value) => value <= 31).length;
+  if (birthdayRangeCount > LOTO7_MAX_BIRTHDAY_RANGE) return false;
+
+  if (countConsecutivePairs(pool) > LOTO7_MAX_CONSECUTIVE_PAIRS) return false;
+
+  return true;
+};
+
+const buildLoto7WheelPool = (latest: LotteryRow | null, recent: LotteryRow[]) => {
+  const expertCandidates = generateExpertCandidates(
+    latest,
+    recent,
+    LOTO7_POOL_EXPERT_COUNT,
+    37
+  );
+
+  let randomCandidates = generateUniqueNumbers(
+    37,
+    LOTO7_POOL_RANDOM_COUNT,
+    new Set(expertCandidates)
+  );
+  let pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
+
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (passesLoto7PoolChecks(pool)) break;
+    randomCandidates = generateUniqueNumbers(
+      37,
+      LOTO7_POOL_RANDOM_COUNT,
+      new Set(expertCandidates)
+    );
+    pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
+  }
+
+  return {
+    expertCandidates,
+    randomCandidates,
+    pool
+  };
+};
+
+const buildLoto7WheelTickets = (pool: number[], lines: number) => {
+  const lineCount = clamp(lines, LOTO7_WHEEL_MIN_LINES, LOTO7_WHEEL_MAX_LINES);
+  const tickets: number[][] = [];
+  const usage = new Map<number, number>();
+  pool.forEach((value) => usage.set(value, 0));
+
+  for (let i = 0; i < lineCount; i += 1) {
+    let best: number[] | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (let attempt = 0; attempt < 220; attempt += 1) {
+      const ticket = sampleFromPool(pool, 7);
+      const signature = ticket.join("-");
+      if (tickets.some((item) => item.join("-") === signature)) continue;
+
+      const maxOverlap = tickets.reduce(
+        (max, item) => Math.max(max, countOverlap(ticket, item)),
+        0
+      );
+      if (maxOverlap > LOTO7_MAX_OVERLAP_BETWEEN_LINES) continue;
+
+      const usageScore = ticket.reduce(
+        (sum, value) => sum + (usage.get(value) ?? 0),
+        0
+      );
+      const overlapScore = tickets.reduce(
+        (sum, item) => sum + countOverlap(ticket, item),
+        0
+      );
+      const score = usageScore * 7 + overlapScore * 4 + countConsecutivePairs(ticket);
+
+      if (score < bestScore) {
+        best = ticket;
+        bestScore = score;
+      }
+    }
+
+    if (!best) {
+      for (let fallback = 0; fallback < 220; fallback += 1) {
+        const ticket = sampleFromPool(pool, 7);
+        const signature = ticket.join("-");
+        if (!tickets.some((item) => item.join("-") === signature)) {
+          best = ticket;
+          break;
+        }
+      }
+    }
+
+    if (!best) {
+      best = sampleFromPool(pool, 7);
+    }
+
+    tickets.push(best);
+    best.forEach((value) => {
+      usage.set(value, (usage.get(value) ?? 0) + 1);
+    });
+  }
+
+  return tickets;
+};
+
 export default function DrawPage() {
   const [unlocked, setUnlocked] = useState(false);
   const [password, setPassword] = useState("");
@@ -504,11 +631,13 @@ export default function DrawPage() {
     bonus: number;
   } | null>(null);
   const [resultLoto6Wheel, setResultLoto6Wheel] =
-    useState<Loto6WheelResult | null>(null);
+    useState<WheelResult | null>(null);
   const [resultLoto7, setResultLoto7] = useState<{
     main: number[];
     bonus: number;
   } | null>(null);
+  const [resultLoto7Wheel, setResultLoto7Wheel] =
+    useState<WheelResult | null>(null);
   const [resultMini, setResultMini] = useState<{
     main: number[];
     bonus: number;
@@ -530,12 +659,12 @@ export default function DrawPage() {
   const [loto6Data, setLoto6Data] = useState<LotteryRow[]>([]);
   const [loto6Status, setLoto6Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto6StatusMessage, setLoto6StatusMessage] = useState("");
-  const [loto7Rules, setLoto7Rules] = useState<TrendRuleFlags>({
-    recent24: true,
-    carry: true,
-    adjacent: true,
-    lastDigit: true
+  const [loto7Modes, setLoto7Modes] = useState<LotoModeFlags>({
+    expert: true,
+    random: true,
+    wheel: true
   });
+  const [loto7WheelLines, setLoto7WheelLines] = useState(5);
   const [loto7Data, setLoto7Data] = useState<LotteryRow[]>([]);
   const [loto7Status, setLoto7Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto7StatusMessage, setLoto7StatusMessage] = useState("");
@@ -723,6 +852,39 @@ export default function DrawPage() {
     });
   };
 
+  const toggleLoto7Expert = () => {
+    setLoto7Modes((prev) => {
+      const expert = !prev.expert;
+      const wheel = expert && prev.random;
+      return { ...prev, expert, wheel };
+    });
+  };
+
+  const toggleLoto7Random = () => {
+    setLoto7Modes((prev) => {
+      const random = !prev.random;
+      const wheel = prev.expert && random;
+      return { ...prev, random, wheel };
+    });
+  };
+
+  const toggleLoto7Wheel = () => {
+    setLoto7Modes((prev) => {
+      if (prev.wheel) {
+        return {
+          expert: prev.expert,
+          random: false,
+          wheel: false
+        };
+      }
+      return {
+        expert: true,
+        random: true,
+        wheel: true
+      };
+    });
+  };
+
   const startLoto6 = () => {
     if (runningLoto6) return;
     setRunningLoto6(true);
@@ -745,7 +907,7 @@ export default function DrawPage() {
           LOTO6_WHEEL_MAX_LINES
         );
         const tickets = buildLoto6WheelTickets(poolResult.pool, lines);
-        const wheelResult: Loto6WheelResult = {
+        const wheelResult: WheelResult = {
           ...poolResult,
           tickets
         };
@@ -805,6 +967,7 @@ export default function DrawPage() {
     if (runningLoto7) return;
     setRunningLoto7(true);
     setResultLoto7(null);
+    setResultLoto7Wheel(null);
     const currentRun = runIdRef.current + 1;
     runIdRef.current = currentRun;
 
@@ -813,20 +976,66 @@ export default function DrawPage() {
       if (runIdRef.current !== currentRun) return;
       const latestLoto7 = loto7Data[0] ?? null;
       const recentLoto7 = loto7Data.slice(0, LOTO7_RECENT_COUNT);
-      const next = generateDrawWithRules(
-        37,
-        7,
-        latestLoto7,
-        recentLoto7,
-        loto7Rules
-      );
-      setResultLoto7(next);
+
+      if (loto7Modes.expert && loto7Modes.random && loto7Modes.wheel) {
+        const poolResult = buildLoto7WheelPool(latestLoto7, recentLoto7);
+        const lines = clamp(
+          loto7WheelLines,
+          LOTO7_WHEEL_MIN_LINES,
+          LOTO7_WHEEL_MAX_LINES
+        );
+        const tickets = buildLoto7WheelTickets(poolResult.pool, lines);
+        const wheelResult: WheelResult = {
+          ...poolResult,
+          tickets
+        };
+        const firstTicket = tickets[0] ?? generateDraw(37, 7).main;
+
+        setResultLoto7({ main: firstTicket, bonus: 0 });
+        setResultLoto7Wheel(wheelResult);
+        setRunningLoto7(false);
+        pushHistory(LOTO7_HISTORY_KEY, historyLoto7, setHistoryLoto7, {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          main: firstTicket,
+          mode: "wheel",
+          wheelPool: wheelResult.pool,
+          wheelTickets: wheelResult.tickets,
+          expertCandidates: wheelResult.expertCandidates,
+          randomCandidates: wheelResult.randomCandidates
+        });
+        return;
+      }
+
+      if (loto7Modes.expert) {
+        const next = generateDrawWithRules(
+          37,
+          7,
+          latestLoto7,
+          recentLoto7,
+          FULL_TREND_RULES
+        );
+        setResultLoto7(next);
+        setRunningLoto7(false);
+        pushHistory(LOTO7_HISTORY_KEY, historyLoto7, setHistoryLoto7, {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          main: next.main,
+          bonus: next.bonus,
+          mode: "single"
+        });
+        return;
+      }
+
+      const randomOnly = generateDraw(37, 7);
+      setResultLoto7(randomOnly);
       setRunningLoto7(false);
       pushHistory(LOTO7_HISTORY_KEY, historyLoto7, setHistoryLoto7, {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
-        main: next.main,
-        bonus: next.bonus
+        main: randomOnly.main,
+        bonus: randomOnly.bonus,
+        mode: "single"
       });
     }, total);
   };
@@ -1064,47 +1273,51 @@ export default function DrawPage() {
             <label className="rule-item">
               <input
                 type="checkbox"
-                checked={loto7Rules.recent24}
-                onChange={() =>
-                  setLoto7Rules((prev) => ({
-                    ...prev,
-                    recent24: !prev.recent24
-                  }))
-                }
+                checked={loto7Modes.expert}
+                onChange={toggleLoto7Expert}
               />
               達人式
             </label>
             <label className="rule-item">
               <input
                 type="checkbox"
-                checked={loto7Rules.carry}
-                onChange={() =>
-                  setLoto7Rules((prev) => ({
-                    ...prev,
-                    carry: !prev.carry
-                  }))
-                }
+                checked={loto7Modes.random}
+                onChange={toggleLoto7Random}
               />
               乱数式
             </label>
             <label className="rule-item">
               <input
                 type="checkbox"
-                checked={loto7Rules.adjacent}
-                onChange={() =>
-                  setLoto7Rules((prev) => {
-                    const next = !prev.adjacent;
-                    return {
-                      ...prev,
-                      adjacent: next,
-                      lastDigit: next
-                    };
-                  })
-                }
+                checked={loto7Modes.wheel}
+                onChange={toggleLoto7Wheel}
               />
               wheel
             </label>
           </div>
+
+          {loto7Modes.wheel ? (
+            <div className="wheel-controls">
+              <label htmlFor="loto7-wheel-lines">wheel口数</label>
+              <input
+                id="loto7-wheel-lines"
+                type="number"
+                min={LOTO7_WHEEL_MIN_LINES}
+                max={LOTO7_WHEEL_MAX_LINES}
+                value={loto7WheelLines}
+                onChange={(event) => {
+                  const raw = Number(event.target.value);
+                  setLoto7WheelLines(
+                    clamp(
+                      Number.isFinite(raw) ? raw : LOTO7_WHEEL_MIN_LINES,
+                      LOTO7_WHEEL_MIN_LINES,
+                      LOTO7_WHEEL_MAX_LINES
+                    )
+                  );
+                }}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="result">
@@ -1115,6 +1328,30 @@ export default function DrawPage() {
               </span>
             ))}
           </div>
+
+          {resultLoto7Wheel ? (
+            <div className="wheel-result">
+              <p className="rule-note">
+                達人式候補: {resultLoto7Wheel.expertCandidates.join(", ")}
+              </p>
+              <p className="rule-note">
+                乱数式候補: {resultLoto7Wheel.randomCandidates.join(", ")}
+              </p>
+              <p className="rule-note">
+                プール12個: {resultLoto7Wheel.pool.join(", ")}
+              </p>
+              <div className="wheel-tickets">
+                {resultLoto7Wheel.tickets.map((ticket, index) => (
+                  <div
+                    className="wheel-ticket"
+                    key={`loto7-wheel-${ticket.join("-")}-${index}`}
+                  >
+                    {index + 1}口目: {ticket.join(", ")}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="actions">
@@ -1232,8 +1469,20 @@ export default function DrawPage() {
                       {new Date(item.createdAt).toLocaleString()}
                     </span>
                     <span className="history-main">
-                      {item.main.join(", ")}
+                      {item.mode === "wheel" && item.wheelTickets?.length
+                        ? item.wheelTickets
+                            .map(
+                              (ticket, index) =>
+                                `${index + 1}口目 ${ticket.join(", ")}`
+                            )
+                            .join(" / ")
+                        : item.main.join(", ")}
                     </span>
+                    {item.mode === "wheel" && item.wheelPool ? (
+                      <span className="history-sub">
+                        pool: {item.wheelPool.join(", ")}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ))
