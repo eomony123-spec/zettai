@@ -286,15 +286,16 @@ label {
 .rule-item {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
   font-size: clamp(10px, 2.4vw, 12px);
-  line-height: 1.6;
+  line-height: 1.4;
 }
 
 .rule-item input {
   width: 18px;
   height: 18px;
-  margin-top: 2px;
+  margin-top: 0;
+  flex: 0 0 auto;
 }
 
 .rule-note {
