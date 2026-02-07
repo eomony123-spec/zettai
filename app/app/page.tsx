@@ -6,7 +6,12 @@ type DrawResult = {
   id: string;
   createdAt: string;
   main: number[];
-  bonus: number;
+  bonus?: number;
+  mode?: "single" | "wheel";
+  wheelPool?: number[];
+  wheelTickets?: number[][];
+  expertCandidates?: number[];
+  randomCandidates?: number[];
 };
 
 type NumbersResult = {
@@ -29,6 +34,19 @@ type LotteryRow = {
   bonus?: number;
 };
 
+type LotoModeFlags = {
+  expert: boolean;
+  random: boolean;
+  wheel: boolean;
+};
+
+type Loto6WheelResult = {
+  expertCandidates: number[];
+  randomCandidates: number[];
+  pool: number[];
+  tickets: number[][];
+};
+
 
 const ACCESS_KEY = "zettai-access-granted";
 const REQUIRED_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD ?? "";
@@ -41,6 +59,24 @@ const NUMBERS3_HISTORY_KEY = "zettai-numbers3-history";
 const MAX_HISTORY = 50;
 const LOTO6_RECENT_COUNT = 24;
 const LOTO7_RECENT_COUNT = 24;
+const LOTO6_POOL_EXPERT_COUNT = 5;
+const LOTO6_POOL_RANDOM_COUNT = 7;
+const LOTO6_BUCKET_MIN = 3;
+const LOTO6_BUCKET_MAX = 5;
+const LOTO6_MAX_BIRTHDAY_RANGE = 6;
+const LOTO6_MAX_CONSECUTIVE_PAIRS = 1;
+const LOTO6_WHEEL_MIN_LINES = 1;
+const LOTO6_WHEEL_MAX_LINES = 10;
+const LOTO6_MAX_OVERLAP_BETWEEN_LINES = 4;
+const FULL_TREND_RULES: TrendRuleFlags = {
+  recent24: true,
+  carry: true,
+  adjacent: true,
+  lastDigit: true
+};
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
 
 const secureRandomInt = (maxExclusive: number) => {
   if (maxExclusive <= 0) return 0;
@@ -74,6 +110,30 @@ const secureRandomFloat = () => {
   const buffer = new Uint32Array(1);
   crypto.getRandomValues(buffer);
   return buffer[0] / 0x100000000;
+};
+
+const generateUniqueNumbers = (
+  maxNumber: number,
+  count: number,
+  excluded: Set<number> = new Set()
+) => {
+  const available = Array.from({ length: maxNumber }, (_, i) => i + 1).filter(
+    (value) => !excluded.has(value)
+  );
+  for (let i = available.length - 1; i > 0; i -= 1) {
+    const j = secureRandomInt(i + 1);
+    [available[i], available[j]] = [available[j], available[i]];
+  }
+  return available.slice(0, Math.min(count, available.length)).sort((a, b) => a - b);
+};
+
+const sampleFromPool = (pool: number[], count: number) => {
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = secureRandomInt(i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, count).sort((a, b) => a - b);
 };
 
 const parseCsvRow = (line: string) => {
@@ -282,6 +342,154 @@ const generateDrawWithRules = (
   return { main, bonus };
 };
 
+const generateExpertCandidates = (
+  latest: LotteryRow | null,
+  recent: LotteryRow[],
+  count: number,
+  maxNumber: number
+) => {
+  if (!latest || recent.length === 0) {
+    return generateUniqueNumbers(maxNumber, count);
+  }
+
+  const candidates = buildCandidateSet(latest, recent, maxNumber, FULL_TREND_RULES);
+  const numbers = Array.from({ length: maxNumber }, (_, i) => i + 1);
+  const weights = numbers.map((value) => (candidates.has(value) ? 3 : 1));
+  return weightedSample(numbers, weights, count).sort((a, b) => a - b);
+};
+
+const countConsecutivePairs = (numbers: number[]) => {
+  const sorted = [...numbers].sort((a, b) => a - b);
+  let pairs = 0;
+  for (let i = 1; i < sorted.length; i += 1) {
+    if (sorted[i] - sorted[i - 1] === 1) pairs += 1;
+  }
+  return pairs;
+};
+
+const countOverlap = (a: number[], b: number[]) => {
+  const target = new Set(b);
+  return a.reduce((sum, value) => sum + (target.has(value) ? 1 : 0), 0);
+};
+
+const passesLoto6PoolChecks = (pool: number[]) => {
+  const buckets = [0, 0, 0];
+  pool.forEach((value) => {
+    if (value <= 14) {
+      buckets[0] += 1;
+    } else if (value <= 28) {
+      buckets[1] += 1;
+    } else {
+      buckets[2] += 1;
+    }
+  });
+
+  const bucketBalanced = buckets.every(
+    (count) => count >= LOTO6_BUCKET_MIN && count <= LOTO6_BUCKET_MAX
+  );
+  if (!bucketBalanced) return false;
+
+  const birthdayRangeCount = pool.filter((value) => value <= 31).length;
+  if (birthdayRangeCount > LOTO6_MAX_BIRTHDAY_RANGE) return false;
+
+  if (countConsecutivePairs(pool) > LOTO6_MAX_CONSECUTIVE_PAIRS) return false;
+
+  return true;
+};
+
+const buildLoto6WheelPool = (latest: LotteryRow | null, recent: LotteryRow[]) => {
+  const expertCandidates = generateExpertCandidates(
+    latest,
+    recent,
+    LOTO6_POOL_EXPERT_COUNT,
+    43
+  );
+
+  let randomCandidates = generateUniqueNumbers(
+    43,
+    LOTO6_POOL_RANDOM_COUNT,
+    new Set(expertCandidates)
+  );
+  let pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
+
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (passesLoto6PoolChecks(pool)) break;
+    randomCandidates = generateUniqueNumbers(
+      43,
+      LOTO6_POOL_RANDOM_COUNT,
+      new Set(expertCandidates)
+    );
+    pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
+  }
+
+  return {
+    expertCandidates,
+    randomCandidates,
+    pool
+  };
+};
+
+const buildLoto6WheelTickets = (pool: number[], lines: number) => {
+  const lineCount = clamp(lines, LOTO6_WHEEL_MIN_LINES, LOTO6_WHEEL_MAX_LINES);
+  const tickets: number[][] = [];
+  const usage = new Map<number, number>();
+  pool.forEach((value) => usage.set(value, 0));
+
+  for (let i = 0; i < lineCount; i += 1) {
+    let best: number[] | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (let attempt = 0; attempt < 220; attempt += 1) {
+      const ticket = sampleFromPool(pool, 6);
+      const signature = ticket.join("-");
+      if (tickets.some((item) => item.join("-") === signature)) continue;
+
+      const maxOverlap = tickets.reduce(
+        (max, item) => Math.max(max, countOverlap(ticket, item)),
+        0
+      );
+      if (maxOverlap > LOTO6_MAX_OVERLAP_BETWEEN_LINES) continue;
+
+      const usageScore = ticket.reduce(
+        (sum, value) => sum + (usage.get(value) ?? 0),
+        0
+      );
+      const overlapScore = tickets.reduce(
+        (sum, item) => sum + countOverlap(ticket, item),
+        0
+      );
+      const score = usageScore * 7 + overlapScore * 4 + countConsecutivePairs(ticket);
+
+      if (score < bestScore) {
+        best = ticket;
+        bestScore = score;
+      }
+    }
+
+    if (!best) {
+      for (let fallback = 0; fallback < 220; fallback += 1) {
+        const ticket = sampleFromPool(pool, 6);
+        const signature = ticket.join("-");
+        if (!tickets.some((item) => item.join("-") === signature)) {
+          best = ticket;
+          break;
+        }
+      }
+    }
+
+    if (!best) {
+      best = sampleFromPool(pool, 6);
+    }
+
+    tickets.push(best);
+    best.forEach((value) => {
+      usage.set(value, (usage.get(value) ?? 0) + 1);
+    });
+  }
+
+  return tickets;
+};
+
 export default function DrawPage() {
   const [unlocked, setUnlocked] = useState(false);
   const [password, setPassword] = useState("");
@@ -295,6 +503,8 @@ export default function DrawPage() {
     main: number[];
     bonus: number;
   } | null>(null);
+  const [resultLoto6Wheel, setResultLoto6Wheel] =
+    useState<Loto6WheelResult | null>(null);
   const [resultLoto7, setResultLoto7] = useState<{
     main: number[];
     bonus: number;
@@ -311,12 +521,12 @@ export default function DrawPage() {
   const [historyNumbers4, setHistoryNumbers4] = useState<NumbersResult[]>([]);
   const [historyNumbers3, setHistoryNumbers3] = useState<NumbersResult[]>([]);
   const runIdRef = useRef(0);
-  const [loto6Rules, setLoto6Rules] = useState<TrendRuleFlags>({
-    recent24: true,
-    carry: true,
-    adjacent: true,
-    lastDigit: true
+  const [loto6Modes, setLoto6Modes] = useState<LotoModeFlags>({
+    expert: true,
+    random: true,
+    wheel: true
   });
+  const [loto6WheelLines, setLoto6WheelLines] = useState(5);
   const [loto6Data, setLoto6Data] = useState<LotteryRow[]>([]);
   const [loto6Status, setLoto6Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto6StatusMessage, setLoto6StatusMessage] = useState("");
@@ -480,10 +690,44 @@ export default function DrawPage() {
     localStorage.setItem(key, JSON.stringify(next));
   };
 
+  const toggleLoto6Expert = () => {
+    setLoto6Modes((prev) => {
+      const expert = !prev.expert;
+      const wheel = expert && prev.random;
+      return { ...prev, expert, wheel };
+    });
+  };
+
+  const toggleLoto6Random = () => {
+    setLoto6Modes((prev) => {
+      const random = !prev.random;
+      const wheel = prev.expert && random;
+      return { ...prev, random, wheel };
+    });
+  };
+
+  const toggleLoto6Wheel = () => {
+    setLoto6Modes((prev) => {
+      if (prev.wheel) {
+        return {
+          expert: prev.expert,
+          random: false,
+          wheel: false
+        };
+      }
+      return {
+        expert: true,
+        random: true,
+        wheel: true
+      };
+    });
+  };
+
   const startLoto6 = () => {
     if (runningLoto6) return;
     setRunningLoto6(true);
     setResultLoto6(null);
+    setResultLoto6Wheel(null);
     const currentRun = runIdRef.current + 1;
     runIdRef.current = currentRun;
 
@@ -492,20 +736,67 @@ export default function DrawPage() {
       if (runIdRef.current !== currentRun) return;
       const latestLoto6 = loto6Data[0] ?? null;
       const recentLoto6 = loto6Data.slice(0, LOTO6_RECENT_COUNT);
-      const next = generateDrawWithRules(
-        43,
-        6,
-        latestLoto6,
-        recentLoto6,
-        loto6Rules
-      );
-      setResultLoto6(next);
+
+      if (loto6Modes.expert && loto6Modes.random && loto6Modes.wheel) {
+        const poolResult = buildLoto6WheelPool(latestLoto6, recentLoto6);
+        const lines = clamp(
+          loto6WheelLines,
+          LOTO6_WHEEL_MIN_LINES,
+          LOTO6_WHEEL_MAX_LINES
+        );
+        const tickets = buildLoto6WheelTickets(poolResult.pool, lines);
+        const wheelResult: Loto6WheelResult = {
+          ...poolResult,
+          tickets
+        };
+        const firstTicket = tickets[0] ?? generateDraw(43, 6).main;
+
+        setResultLoto6({ main: firstTicket, bonus: 0 });
+        setResultLoto6Wheel(wheelResult);
+        setRunningLoto6(false);
+
+        pushHistory(LOTO6_HISTORY_KEY, historyLoto6, setHistoryLoto6, {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          main: firstTicket,
+          mode: "wheel",
+          wheelPool: wheelResult.pool,
+          wheelTickets: wheelResult.tickets,
+          expertCandidates: wheelResult.expertCandidates,
+          randomCandidates: wheelResult.randomCandidates
+        });
+        return;
+      }
+
+      if (loto6Modes.expert) {
+        const next = generateDrawWithRules(
+          43,
+          6,
+          latestLoto6,
+          recentLoto6,
+          FULL_TREND_RULES
+        );
+        setResultLoto6(next);
+        setRunningLoto6(false);
+        pushHistory(LOTO6_HISTORY_KEY, historyLoto6, setHistoryLoto6, {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          main: next.main,
+          bonus: next.bonus,
+          mode: "single"
+        });
+        return;
+      }
+
+      const randomOnly = generateDraw(43, 6);
+      setResultLoto6(randomOnly);
       setRunningLoto6(false);
       pushHistory(LOTO6_HISTORY_KEY, historyLoto6, setHistoryLoto6, {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
-        main: next.main,
-        bonus: next.bonus
+        main: randomOnly.main,
+        bonus: randomOnly.bonus,
+        mode: "single"
       });
     }, total);
   };
@@ -677,47 +968,51 @@ export default function DrawPage() {
             <label className="rule-item">
               <input
                 type="checkbox"
-                checked={loto6Rules.recent24}
-                onChange={() =>
-                  setLoto6Rules((prev) => ({
-                    ...prev,
-                    recent24: !prev.recent24
-                  }))
-                }
+                checked={loto6Modes.expert}
+                onChange={toggleLoto6Expert}
               />
               達人式
             </label>
             <label className="rule-item">
               <input
                 type="checkbox"
-                checked={loto6Rules.carry}
-                onChange={() =>
-                  setLoto6Rules((prev) => ({
-                    ...prev,
-                    carry: !prev.carry
-                  }))
-                }
+                checked={loto6Modes.random}
+                onChange={toggleLoto6Random}
               />
               乱数式
             </label>
             <label className="rule-item">
               <input
                 type="checkbox"
-                checked={loto6Rules.adjacent}
-                onChange={() =>
-                  setLoto6Rules((prev) => {
-                    const next = !prev.adjacent;
-                    return {
-                      ...prev,
-                      adjacent: next,
-                      lastDigit: next
-                    };
-                  })
-                }
+                checked={loto6Modes.wheel}
+                onChange={toggleLoto6Wheel}
               />
               wheel
             </label>
           </div>
+
+          {loto6Modes.wheel ? (
+            <div className="wheel-controls">
+              <label htmlFor="loto6-wheel-lines">wheel口数</label>
+              <input
+                id="loto6-wheel-lines"
+                type="number"
+                min={LOTO6_WHEEL_MIN_LINES}
+                max={LOTO6_WHEEL_MAX_LINES}
+                value={loto6WheelLines}
+                onChange={(event) => {
+                  const raw = Number(event.target.value);
+                  setLoto6WheelLines(
+                    clamp(
+                      Number.isFinite(raw) ? raw : LOTO6_WHEEL_MIN_LINES,
+                      LOTO6_WHEEL_MIN_LINES,
+                      LOTO6_WHEEL_MAX_LINES
+                    )
+                  );
+                }}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="result">
@@ -728,6 +1023,30 @@ export default function DrawPage() {
               </span>
             ))}
           </div>
+
+          {resultLoto6Wheel ? (
+            <div className="wheel-result">
+              <p className="rule-note">
+                達人式候補: {resultLoto6Wheel.expertCandidates.join(", ")}
+              </p>
+              <p className="rule-note">
+                乱数式候補: {resultLoto6Wheel.randomCandidates.join(", ")}
+              </p>
+              <p className="rule-note">
+                プール12個: {resultLoto6Wheel.pool.join(", ")}
+              </p>
+              <div className="wheel-tickets">
+                {resultLoto6Wheel.tickets.map((ticket, index) => (
+                  <div
+                    className="wheel-ticket"
+                    key={`wheel-${ticket.join("-")}-${index}`}
+                  >
+                    {index + 1}口目: {ticket.join(", ")}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="actions">
@@ -881,8 +1200,20 @@ export default function DrawPage() {
                       {new Date(item.createdAt).toLocaleString()}
                     </span>
                     <span className="history-main">
-                      {item.main.join(", ")}
+                      {item.mode === "wheel" && item.wheelTickets?.length
+                        ? item.wheelTickets
+                            .map(
+                              (ticket, index) =>
+                                `${index + 1}口目 ${ticket.join(", ")}`
+                            )
+                            .join(" / ")
+                        : item.main.join(", ")}
                     </span>
+                    {item.mode === "wheel" && item.wheelPool ? (
+                      <span className="history-sub">
+                        pool: {item.wheelPool.join(", ")}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ))

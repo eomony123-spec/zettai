@@ -239,6 +239,11 @@ main {
   font-size: clamp(10px, 2.4vw, 12px);
 }
 
+.history-sub {
+  color: #5c4a24;
+  font-size: clamp(10px, 2.2vw, 12px);
+}
+
 input {
   width: 100%;
   border: 3px solid var(--border);
@@ -296,5 +301,39 @@ label {
   margin: 8px 0 0;
   font-size: clamp(10px, 2.2vw, 12px);
   color: #3a3a3a;
+}
+
+.wheel-controls {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wheel-controls label {
+  display: block;
+}
+
+.wheel-controls input {
+  width: 120px;
+}
+
+.wheel-result {
+  display: grid;
+  gap: 6px;
+}
+
+.wheel-tickets {
+  display: grid;
+  gap: 6px;
+}
+
+.wheel-ticket {
+  padding: 6px;
+  border: 2px solid var(--border);
+  background: #fff2c7;
+  font-size: clamp(10px, 2.2vw, 12px);
+  line-height: 1.6;
 }
 
