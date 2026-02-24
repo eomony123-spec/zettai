@@ -53,6 +53,13 @@ type WheelPoolCounts = {
   total: number;
 };
 
+type WheelDraftInputs = {
+  expert: string;
+  random: string;
+  total: string;
+  lines: string;
+};
+
 
 const ACCESS_KEY = "zettai-access-granted";
 const REQUIRED_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD ?? "";
@@ -98,12 +105,24 @@ const toHalfWidthDigits = (value: string) =>
     String.fromCharCode(char.charCodeAt(0) - 0xfee0)
   );
 
+const sanitizeNumericInput = (value: string) =>
+  toHalfWidthDigits(value).replace(/[^0-9]/g, "");
+
 const parseIntegerInput = (value: string, fallback: number) => {
-  const normalized = toHalfWidthDigits(value);
-  const digitsOnly = normalized.replace(/[^0-9]/g, "");
+  const digitsOnly = sanitizeNumericInput(value);
   const parsed = Number.parseInt(digitsOnly, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
+
+const toWheelDraftInputs = (
+  counts: WheelPoolCounts,
+  lines: number
+): WheelDraftInputs => ({
+  expert: String(counts.expert),
+  random: String(counts.random),
+  total: String(counts.total),
+  lines: String(lines)
+});
 
 const normalizePoolCounts = (
   raw: Partial<WheelPoolCounts>,
@@ -704,6 +723,9 @@ export default function DrawPage() {
   });
   const [loto6WheelLines, setLoto6WheelLines] = useState(5);
   const [loto6PoolCounts, setLoto6PoolCounts] = useState<WheelPoolCounts>(LOTO6_DEFAULT_POOL_COUNTS);
+  const [loto6WheelDraft, setLoto6WheelDraft] = useState<WheelDraftInputs>(
+    toWheelDraftInputs(LOTO6_DEFAULT_POOL_COUNTS, 5)
+  );
   const [loto6Data, setLoto6Data] = useState<LotteryRow[]>([]);
   const [loto6Status, setLoto6Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto6StatusMessage, setLoto6StatusMessage] = useState("");
@@ -714,6 +736,9 @@ export default function DrawPage() {
   });
   const [loto7WheelLines, setLoto7WheelLines] = useState(5);
   const [loto7PoolCounts, setLoto7PoolCounts] = useState<WheelPoolCounts>(LOTO7_DEFAULT_POOL_COUNTS);
+  const [loto7WheelDraft, setLoto7WheelDraft] = useState<WheelDraftInputs>(
+    toWheelDraftInputs(LOTO7_DEFAULT_POOL_COUNTS, 5)
+  );
   const [loto7Data, setLoto7Data] = useState<LotteryRow[]>([]);
   const [loto7Status, setLoto7Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto7StatusMessage, setLoto7StatusMessage] = useState("");
@@ -762,6 +787,14 @@ export default function DrawPage() {
     if (typeof window === "undefined") return;
     localStorage.setItem(LOTO7_POOL_CONFIG_KEY, JSON.stringify(loto7PoolCounts));
   }, [loto7PoolCounts]);
+
+  useEffect(() => {
+    setLoto6WheelDraft(toWheelDraftInputs(loto6PoolCounts, loto6WheelLines));
+  }, [loto6PoolCounts, loto6WheelLines]);
+
+  useEffect(() => {
+    setLoto7WheelDraft(toWheelDraftInputs(loto7PoolCounts, loto7WheelLines));
+  }, [loto7PoolCounts, loto7WheelLines]);
 
   useEffect(() => {
     if (!unlocked) return;
@@ -1050,6 +1083,36 @@ export default function DrawPage() {
         LOTO7_DEFAULT_POOL_COUNTS
       );
     });
+  };
+
+  const commitLoto6WheelField = (field: keyof WheelDraftInputs) => {
+    if (field === "lines") {
+      const next = clamp(
+        parseIntegerInput(loto6WheelDraft.lines, loto6WheelLines),
+        LOTO6_WHEEL_MIN_LINES,
+        LOTO6_WHEEL_MAX_LINES
+      );
+      setLoto6WheelLines(next);
+      return;
+    }
+
+    const next = parseIntegerInput(loto6WheelDraft[field], loto6PoolCounts[field]);
+    updateLoto6PoolCounts(field, next);
+  };
+
+  const commitLoto7WheelField = (field: keyof WheelDraftInputs) => {
+    if (field === "lines") {
+      const next = clamp(
+        parseIntegerInput(loto7WheelDraft.lines, loto7WheelLines),
+        LOTO7_WHEEL_MIN_LINES,
+        LOTO7_WHEEL_MAX_LINES
+      );
+      setLoto7WheelLines(next);
+      return;
+    }
+
+    const next = parseIntegerInput(loto7WheelDraft[field], loto7PoolCounts[field]);
+    updateLoto7PoolCounts(field, next);
   };
 
   const startLoto6 = () => {
@@ -1378,13 +1441,19 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={1}
                   max={42}
-                  value={loto6PoolCounts.expert}
+                  value={loto6WheelDraft.expert}
                   onChange={(event) =>
-                    updateLoto6PoolCounts(
-                      "expert",
-                      parseIntegerInput(event.target.value, loto6PoolCounts.expert)
-                    )
+                    setLoto6WheelDraft((prev) => ({
+                      ...prev,
+                      expert: sanitizeNumericInput(event.target.value)
+                    }))
                   }
+                  onBlur={() => commitLoto6WheelField("expert")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </div>
               <div className="wheel-control-row">
@@ -1396,13 +1465,19 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={1}
                   max={42}
-                  value={loto6PoolCounts.random}
+                  value={loto6WheelDraft.random}
                   onChange={(event) =>
-                    updateLoto6PoolCounts(
-                      "random",
-                      parseIntegerInput(event.target.value, loto6PoolCounts.random)
-                    )
+                    setLoto6WheelDraft((prev) => ({
+                      ...prev,
+                      random: sanitizeNumericInput(event.target.value)
+                    }))
                   }
+                  onBlur={() => commitLoto6WheelField("random")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </div>
               <div className="wheel-control-row">
@@ -1414,13 +1489,19 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={6}
                   max={43}
-                  value={loto6PoolCounts.total}
+                  value={loto6WheelDraft.total}
                   onChange={(event) =>
-                    updateLoto6PoolCounts(
-                      "total",
-                      parseIntegerInput(event.target.value, loto6PoolCounts.total)
-                    )
+                    setLoto6WheelDraft((prev) => ({
+                      ...prev,
+                      total: sanitizeNumericInput(event.target.value)
+                    }))
                   }
+                  onBlur={() => commitLoto6WheelField("total")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </div>
               <div className="wheel-control-row">
@@ -1432,12 +1513,18 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={LOTO6_WHEEL_MIN_LINES}
                   max={LOTO6_WHEEL_MAX_LINES}
-                  value={loto6WheelLines}
-                  onChange={(event) => {
-                    const raw = parseIntegerInput(event.target.value, loto6WheelLines);
-                    setLoto6WheelLines(
-                      clamp(raw, LOTO6_WHEEL_MIN_LINES, LOTO6_WHEEL_MAX_LINES)
-                    );
+                  value={loto6WheelDraft.lines}
+                  onChange={(event) =>
+                    setLoto6WheelDraft((prev) => ({
+                      ...prev,
+                      lines: sanitizeNumericInput(event.target.value)
+                    }))
+                  }
+                  onBlur={() => commitLoto6WheelField("lines")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
                   }}
                 />
               </div>
@@ -1528,13 +1615,19 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={1}
                   max={36}
-                  value={loto7PoolCounts.expert}
+                  value={loto7WheelDraft.expert}
                   onChange={(event) =>
-                    updateLoto7PoolCounts(
-                      "expert",
-                      parseIntegerInput(event.target.value, loto7PoolCounts.expert)
-                    )
+                    setLoto7WheelDraft((prev) => ({
+                      ...prev,
+                      expert: sanitizeNumericInput(event.target.value)
+                    }))
                   }
+                  onBlur={() => commitLoto7WheelField("expert")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </div>
               <div className="wheel-control-row">
@@ -1546,13 +1639,19 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={1}
                   max={36}
-                  value={loto7PoolCounts.random}
+                  value={loto7WheelDraft.random}
                   onChange={(event) =>
-                    updateLoto7PoolCounts(
-                      "random",
-                      parseIntegerInput(event.target.value, loto7PoolCounts.random)
-                    )
+                    setLoto7WheelDraft((prev) => ({
+                      ...prev,
+                      random: sanitizeNumericInput(event.target.value)
+                    }))
                   }
+                  onBlur={() => commitLoto7WheelField("random")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </div>
               <div className="wheel-control-row">
@@ -1564,13 +1663,19 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={7}
                   max={37}
-                  value={loto7PoolCounts.total}
+                  value={loto7WheelDraft.total}
                   onChange={(event) =>
-                    updateLoto7PoolCounts(
-                      "total",
-                      parseIntegerInput(event.target.value, loto7PoolCounts.total)
-                    )
+                    setLoto7WheelDraft((prev) => ({
+                      ...prev,
+                      total: sanitizeNumericInput(event.target.value)
+                    }))
                   }
+                  onBlur={() => commitLoto7WheelField("total")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </div>
               <div className="wheel-control-row">
@@ -1582,12 +1687,18 @@ export default function DrawPage() {
                   pattern="[0-9]*"
                   min={LOTO7_WHEEL_MIN_LINES}
                   max={LOTO7_WHEEL_MAX_LINES}
-                  value={loto7WheelLines}
-                  onChange={(event) => {
-                    const raw = parseIntegerInput(event.target.value, loto7WheelLines);
-                    setLoto7WheelLines(
-                      clamp(raw, LOTO7_WHEEL_MIN_LINES, LOTO7_WHEEL_MAX_LINES)
-                    );
+                  value={loto7WheelDraft.lines}
+                  onChange={(event) =>
+                    setLoto7WheelDraft((prev) => ({
+                      ...prev,
+                      lines: sanitizeNumericInput(event.target.value)
+                    }))
+                  }
+                  onBlur={() => commitLoto7WheelField("lines")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
                   }}
                 />
               </div>
