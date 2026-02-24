@@ -93,6 +93,11 @@ const FULL_TREND_RULES: TrendRuleFlags = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const parseIntegerInput = (value: string, fallback: number) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 const normalizePoolCounts = (
   raw: Partial<WheelPoolCounts>,
   maxNumber: number,
@@ -1357,51 +1362,74 @@ export default function DrawPage() {
 
           {loto6Modes.wheel ? (
             <div className="wheel-controls">
-              <label htmlFor="loto6-expert-count">達人式候補数</label>
-              <input
-                id="loto6-expert-count"
-                type="number"
-                min={1}
-                max={42}
-                value={loto6PoolCounts.expert}
-                onChange={(event) => updateLoto6PoolCounts("expert", Number(event.target.value))}
-              />
-              <label htmlFor="loto6-random-count">乱数式候補数</label>
-              <input
-                id="loto6-random-count"
-                type="number"
-                min={1}
-                max={42}
-                value={loto6PoolCounts.random}
-                onChange={(event) => updateLoto6PoolCounts("random", Number(event.target.value))}
-              />
-              <label htmlFor="loto6-total-count">候補プール総数</label>
-              <input
-                id="loto6-total-count"
-                type="number"
-                min={6}
-                max={43}
-                value={loto6PoolCounts.total}
-                onChange={(event) => updateLoto6PoolCounts("total", Number(event.target.value))}
-              />
-              <label htmlFor="loto6-wheel-lines">wheel口数</label>
-              <input
-                id="loto6-wheel-lines"
-                type="number"
-                min={LOTO6_WHEEL_MIN_LINES}
-                max={LOTO6_WHEEL_MAX_LINES}
-                value={loto6WheelLines}
-                onChange={(event) => {
-                  const raw = Number(event.target.value);
-                  setLoto6WheelLines(
-                    clamp(
-                      Number.isFinite(raw) ? raw : LOTO6_WHEEL_MIN_LINES,
-                      LOTO6_WHEEL_MIN_LINES,
-                      LOTO6_WHEEL_MAX_LINES
+              <div className="wheel-control-row">
+                <label htmlFor="loto6-expert-count">達人式候補数</label>
+                <input
+                  id="loto6-expert-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={42}
+                  value={loto6PoolCounts.expert}
+                  onChange={(event) =>
+                    updateLoto6PoolCounts(
+                      "expert",
+                      parseIntegerInput(event.target.value, loto6PoolCounts.expert)
                     )
-                  );
-                }}
-              />
+                  }
+                />
+              </div>
+              <div className="wheel-control-row">
+                <label htmlFor="loto6-random-count">乱数式候補数</label>
+                <input
+                  id="loto6-random-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={42}
+                  value={loto6PoolCounts.random}
+                  onChange={(event) =>
+                    updateLoto6PoolCounts(
+                      "random",
+                      parseIntegerInput(event.target.value, loto6PoolCounts.random)
+                    )
+                  }
+                />
+              </div>
+              <div className="wheel-control-row">
+                <label htmlFor="loto6-total-count">候補プール総数</label>
+                <input
+                  id="loto6-total-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={6}
+                  max={43}
+                  value={loto6PoolCounts.total}
+                  onChange={(event) =>
+                    updateLoto6PoolCounts(
+                      "total",
+                      parseIntegerInput(event.target.value, loto6PoolCounts.total)
+                    )
+                  }
+                />
+              </div>
+              <div className="wheel-control-row">
+                <label htmlFor="loto6-wheel-lines">wheel口数</label>
+                <input
+                  id="loto6-wheel-lines"
+                  type="number"
+                  inputMode="numeric"
+                  min={LOTO6_WHEEL_MIN_LINES}
+                  max={LOTO6_WHEEL_MAX_LINES}
+                  value={loto6WheelLines}
+                  onChange={(event) => {
+                    const raw = parseIntegerInput(event.target.value, loto6WheelLines);
+                    setLoto6WheelLines(
+                      clamp(raw, LOTO6_WHEEL_MIN_LINES, LOTO6_WHEEL_MAX_LINES)
+                    );
+                  }}
+                />
+              </div>
             </div>
           ) : null}
         </div>
@@ -1480,51 +1508,74 @@ export default function DrawPage() {
 
           {loto7Modes.wheel ? (
             <div className="wheel-controls">
-              <label htmlFor="loto7-expert-count">達人式候補数</label>
-              <input
-                id="loto7-expert-count"
-                type="number"
-                min={1}
-                max={36}
-                value={loto7PoolCounts.expert}
-                onChange={(event) => updateLoto7PoolCounts("expert", Number(event.target.value))}
-              />
-              <label htmlFor="loto7-random-count">乱数式候補数</label>
-              <input
-                id="loto7-random-count"
-                type="number"
-                min={1}
-                max={36}
-                value={loto7PoolCounts.random}
-                onChange={(event) => updateLoto7PoolCounts("random", Number(event.target.value))}
-              />
-              <label htmlFor="loto7-total-count">候補プール総数</label>
-              <input
-                id="loto7-total-count"
-                type="number"
-                min={7}
-                max={37}
-                value={loto7PoolCounts.total}
-                onChange={(event) => updateLoto7PoolCounts("total", Number(event.target.value))}
-              />
-              <label htmlFor="loto7-wheel-lines">wheel口数</label>
-              <input
-                id="loto7-wheel-lines"
-                type="number"
-                min={LOTO7_WHEEL_MIN_LINES}
-                max={LOTO7_WHEEL_MAX_LINES}
-                value={loto7WheelLines}
-                onChange={(event) => {
-                  const raw = Number(event.target.value);
-                  setLoto7WheelLines(
-                    clamp(
-                      Number.isFinite(raw) ? raw : LOTO7_WHEEL_MIN_LINES,
-                      LOTO7_WHEEL_MIN_LINES,
-                      LOTO7_WHEEL_MAX_LINES
+              <div className="wheel-control-row">
+                <label htmlFor="loto7-expert-count">達人式候補数</label>
+                <input
+                  id="loto7-expert-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={36}
+                  value={loto7PoolCounts.expert}
+                  onChange={(event) =>
+                    updateLoto7PoolCounts(
+                      "expert",
+                      parseIntegerInput(event.target.value, loto7PoolCounts.expert)
                     )
-                  );
-                }}
-              />
+                  }
+                />
+              </div>
+              <div className="wheel-control-row">
+                <label htmlFor="loto7-random-count">乱数式候補数</label>
+                <input
+                  id="loto7-random-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={36}
+                  value={loto7PoolCounts.random}
+                  onChange={(event) =>
+                    updateLoto7PoolCounts(
+                      "random",
+                      parseIntegerInput(event.target.value, loto7PoolCounts.random)
+                    )
+                  }
+                />
+              </div>
+              <div className="wheel-control-row">
+                <label htmlFor="loto7-total-count">候補プール総数</label>
+                <input
+                  id="loto7-total-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={7}
+                  max={37}
+                  value={loto7PoolCounts.total}
+                  onChange={(event) =>
+                    updateLoto7PoolCounts(
+                      "total",
+                      parseIntegerInput(event.target.value, loto7PoolCounts.total)
+                    )
+                  }
+                />
+              </div>
+              <div className="wheel-control-row">
+                <label htmlFor="loto7-wheel-lines">wheel口数</label>
+                <input
+                  id="loto7-wheel-lines"
+                  type="number"
+                  inputMode="numeric"
+                  min={LOTO7_WHEEL_MIN_LINES}
+                  max={LOTO7_WHEEL_MAX_LINES}
+                  value={loto7WheelLines}
+                  onChange={(event) => {
+                    const raw = parseIntegerInput(event.target.value, loto7WheelLines);
+                    setLoto7WheelLines(
+                      clamp(raw, LOTO7_WHEEL_MIN_LINES, LOTO7_WHEEL_MAX_LINES)
+                    );
+                  }}
+                />
+              </div>
             </div>
           ) : null}
         </div>

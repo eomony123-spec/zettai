@@ -306,18 +306,28 @@ label {
 
 .wheel-controls {
   margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.wheel-control-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  flex-wrap: wrap;
 }
 
-.wheel-controls label {
+.wheel-control-row label {
   display: block;
+  margin: 0;
 }
 
-.wheel-controls input {
-  width: 120px;
+.wheel-control-row input {
+  width: 84px;
+  min-height: 40px;
+  text-align: center;
+  font-size: 16px;
+  flex: 0 0 auto;
 }
 
 .wheel-result {
