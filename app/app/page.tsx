@@ -47,6 +47,12 @@ type WheelResult = {
   tickets: number[][];
 };
 
+type WheelPoolCounts = {
+  expert: number;
+  random: number;
+  total: number;
+};
+
 
 const ACCESS_KEY = "zettai-access-granted";
 const REQUIRED_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD ?? "";
@@ -56,11 +62,12 @@ const LOTO7_HISTORY_KEY = "zettai-loto7-history";
 const MINI_HISTORY_KEY = "zettai-mini-history";
 const NUMBERS4_HISTORY_KEY = "zettai-numbers4-history";
 const NUMBERS3_HISTORY_KEY = "zettai-numbers3-history";
+const LOTO6_POOL_CONFIG_KEY = "zettai-loto6-pool-config";
+const LOTO7_POOL_CONFIG_KEY = "zettai-loto7-pool-config";
 const MAX_HISTORY = 50;
 const LOTO6_RECENT_COUNT = 24;
 const LOTO7_RECENT_COUNT = 24;
-const LOTO6_POOL_EXPERT_COUNT = 5;
-const LOTO6_POOL_RANDOM_COUNT = 7;
+const LOTO6_DEFAULT_POOL_COUNTS: WheelPoolCounts = { expert: 5, random: 7, total: 12 };
 const LOTO6_BUCKET_MIN = 3;
 const LOTO6_BUCKET_MAX = 5;
 const LOTO6_MAX_BIRTHDAY_RANGE = 6;
@@ -68,8 +75,7 @@ const LOTO6_MAX_CONSECUTIVE_PAIRS = 1;
 const LOTO6_WHEEL_MIN_LINES = 1;
 const LOTO6_WHEEL_MAX_LINES = 10;
 const LOTO6_MAX_OVERLAP_BETWEEN_LINES = 4;
-const LOTO7_POOL_EXPERT_COUNT = 5;
-const LOTO7_POOL_RANDOM_COUNT = 7;
+const LOTO7_DEFAULT_POOL_COUNTS: WheelPoolCounts = { expert: 5, random: 7, total: 12 };
 const LOTO7_BUCKET_MIN = 3;
 const LOTO7_BUCKET_MAX = 5;
 const LOTO7_MAX_BIRTHDAY_RANGE = 8;
@@ -86,6 +92,27 @@ const FULL_TREND_RULES: TrendRuleFlags = {
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+
+const normalizePoolCounts = (
+  raw: Partial<WheelPoolCounts>,
+  maxNumber: number,
+  minTotal: number,
+  defaults: WheelPoolCounts
+): WheelPoolCounts => {
+  const safeExpert = Number.isFinite(raw.expert) ? Number(raw.expert) : defaults.expert;
+  const safeRandom = Number.isFinite(raw.random) ? Number(raw.random) : defaults.random;
+
+  const minExpert = 1;
+  const minRandom = 1;
+  const maxExpert = Math.max(minExpert, maxNumber - minRandom);
+  const expert = clamp(Math.floor(safeExpert), minExpert, maxExpert);
+
+  const maxRandom = Math.max(minRandom, maxNumber - expert);
+  const random = clamp(Math.floor(safeRandom), minRandom, maxRandom);
+
+  const total = clamp(expert + random, minTotal, maxNumber);
+  return { expert, random, total };
+};
 
 const secureRandomInt = (maxExclusive: number) => {
   if (maxExclusive <= 0) return 0;
@@ -406,17 +433,21 @@ const passesLoto6PoolChecks = (pool: number[]) => {
   return true;
 };
 
-const buildLoto6WheelPool = (latest: LotteryRow | null, recent: LotteryRow[]) => {
+const buildLoto6WheelPool = (
+  latest: LotteryRow | null,
+  recent: LotteryRow[],
+  counts: WheelPoolCounts
+) => {
   const expertCandidates = generateExpertCandidates(
     latest,
     recent,
-    LOTO6_POOL_EXPERT_COUNT,
+    counts.expert,
     43
   );
 
   let randomCandidates = generateUniqueNumbers(
     43,
-    LOTO6_POOL_RANDOM_COUNT,
+    counts.random,
     new Set(expertCandidates)
   );
   let pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
@@ -425,7 +456,7 @@ const buildLoto6WheelPool = (latest: LotteryRow | null, recent: LotteryRow[]) =>
     if (passesLoto6PoolChecks(pool)) break;
     randomCandidates = generateUniqueNumbers(
       43,
-      LOTO6_POOL_RANDOM_COUNT,
+      counts.random,
       new Set(expertCandidates)
     );
     pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
@@ -524,17 +555,21 @@ const passesLoto7PoolChecks = (pool: number[]) => {
   return true;
 };
 
-const buildLoto7WheelPool = (latest: LotteryRow | null, recent: LotteryRow[]) => {
+const buildLoto7WheelPool = (
+  latest: LotteryRow | null,
+  recent: LotteryRow[],
+  counts: WheelPoolCounts
+) => {
   const expertCandidates = generateExpertCandidates(
     latest,
     recent,
-    LOTO7_POOL_EXPERT_COUNT,
+    counts.expert,
     37
   );
 
   let randomCandidates = generateUniqueNumbers(
     37,
-    LOTO7_POOL_RANDOM_COUNT,
+    counts.random,
     new Set(expertCandidates)
   );
   let pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
@@ -543,7 +578,7 @@ const buildLoto7WheelPool = (latest: LotteryRow | null, recent: LotteryRow[]) =>
     if (passesLoto7PoolChecks(pool)) break;
     randomCandidates = generateUniqueNumbers(
       37,
-      LOTO7_POOL_RANDOM_COUNT,
+      counts.random,
       new Set(expertCandidates)
     );
     pool = [...expertCandidates, ...randomCandidates].sort((a, b) => a - b);
@@ -656,6 +691,7 @@ export default function DrawPage() {
     wheel: true
   });
   const [loto6WheelLines, setLoto6WheelLines] = useState(5);
+  const [loto6PoolCounts, setLoto6PoolCounts] = useState<WheelPoolCounts>(LOTO6_DEFAULT_POOL_COUNTS);
   const [loto6Data, setLoto6Data] = useState<LotteryRow[]>([]);
   const [loto6Status, setLoto6Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto6StatusMessage, setLoto6StatusMessage] = useState("");
@@ -665,6 +701,7 @@ export default function DrawPage() {
     wheel: true
   });
   const [loto7WheelLines, setLoto7WheelLines] = useState(5);
+  const [loto7PoolCounts, setLoto7PoolCounts] = useState<WheelPoolCounts>(LOTO7_DEFAULT_POOL_COUNTS);
   const [loto7Data, setLoto7Data] = useState<LotteryRow[]>([]);
   const [loto7Status, setLoto7Status] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [loto7StatusMessage, setLoto7StatusMessage] = useState("");
@@ -676,6 +713,43 @@ export default function DrawPage() {
       setUnlocked(true);
     }
   }, []);
+
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const rawLoto6Config = localStorage.getItem(LOTO6_POOL_CONFIG_KEY);
+      if (rawLoto6Config) {
+        const parsed = JSON.parse(rawLoto6Config) as Partial<WheelPoolCounts>;
+        setLoto6PoolCounts(
+          normalizePoolCounts(parsed, 43, 6, LOTO6_DEFAULT_POOL_COUNTS)
+        );
+      }
+
+      const rawLoto7Config = localStorage.getItem(LOTO7_POOL_CONFIG_KEY);
+      if (rawLoto7Config) {
+        const parsed = JSON.parse(rawLoto7Config) as Partial<WheelPoolCounts>;
+        setLoto7PoolCounts(
+          normalizePoolCounts(parsed, 37, 7, LOTO7_DEFAULT_POOL_COUNTS)
+        );
+      }
+    } catch {
+      setLoto6PoolCounts(LOTO6_DEFAULT_POOL_COUNTS);
+      setLoto7PoolCounts(LOTO7_DEFAULT_POOL_COUNTS);
+    }
+  }, []);
+
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(LOTO6_POOL_CONFIG_KEY, JSON.stringify(loto6PoolCounts));
+  }, [loto6PoolCounts]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(LOTO7_POOL_CONFIG_KEY, JSON.stringify(loto7PoolCounts));
+  }, [loto7PoolCounts]);
 
   useEffect(() => {
     if (!unlocked) return;
@@ -885,6 +959,87 @@ export default function DrawPage() {
     });
   };
 
+
+  const updateLoto6PoolCounts = (field: keyof WheelPoolCounts, value: number) => {
+    setLoto6PoolCounts((prev) => {
+      const maxNumber = 43;
+      const minTotal = 6;
+      const parsed = Number.isFinite(value) ? Math.floor(value) : prev[field];
+
+      if (field === "total") {
+        const total = clamp(parsed, minTotal, maxNumber);
+        const expert = clamp(prev.expert, 1, total - 1);
+        const random = total - expert;
+        return normalizePoolCounts(
+          { expert, random, total },
+          maxNumber,
+          minTotal,
+          LOTO6_DEFAULT_POOL_COUNTS
+        );
+      }
+
+      if (field === "expert") {
+        const expert = clamp(parsed, 1, maxNumber - 1);
+        const random = clamp(prev.random, 1, maxNumber - expert);
+        return normalizePoolCounts(
+          { expert, random, total: expert + random },
+          maxNumber,
+          minTotal,
+          LOTO6_DEFAULT_POOL_COUNTS
+        );
+      }
+
+      const random = clamp(parsed, 1, maxNumber - 1);
+      const expert = clamp(prev.expert, 1, maxNumber - random);
+      return normalizePoolCounts(
+        { expert, random, total: expert + random },
+        maxNumber,
+        minTotal,
+        LOTO6_DEFAULT_POOL_COUNTS
+      );
+    });
+  };
+
+  const updateLoto7PoolCounts = (field: keyof WheelPoolCounts, value: number) => {
+    setLoto7PoolCounts((prev) => {
+      const maxNumber = 37;
+      const minTotal = 7;
+      const parsed = Number.isFinite(value) ? Math.floor(value) : prev[field];
+
+      if (field === "total") {
+        const total = clamp(parsed, minTotal, maxNumber);
+        const expert = clamp(prev.expert, 1, total - 1);
+        const random = total - expert;
+        return normalizePoolCounts(
+          { expert, random, total },
+          maxNumber,
+          minTotal,
+          LOTO7_DEFAULT_POOL_COUNTS
+        );
+      }
+
+      if (field === "expert") {
+        const expert = clamp(parsed, 1, maxNumber - 1);
+        const random = clamp(prev.random, 1, maxNumber - expert);
+        return normalizePoolCounts(
+          { expert, random, total: expert + random },
+          maxNumber,
+          minTotal,
+          LOTO7_DEFAULT_POOL_COUNTS
+        );
+      }
+
+      const random = clamp(parsed, 1, maxNumber - 1);
+      const expert = clamp(prev.expert, 1, maxNumber - random);
+      return normalizePoolCounts(
+        { expert, random, total: expert + random },
+        maxNumber,
+        minTotal,
+        LOTO7_DEFAULT_POOL_COUNTS
+      );
+    });
+  };
+
   const startLoto6 = () => {
     if (runningLoto6) return;
     setRunningLoto6(true);
@@ -900,7 +1055,7 @@ export default function DrawPage() {
       const recentLoto6 = loto6Data.slice(0, LOTO6_RECENT_COUNT);
 
       if (loto6Modes.expert && loto6Modes.random && loto6Modes.wheel) {
-        const poolResult = buildLoto6WheelPool(latestLoto6, recentLoto6);
+        const poolResult = buildLoto6WheelPool(latestLoto6, recentLoto6, loto6PoolCounts);
         const lines = clamp(
           loto6WheelLines,
           LOTO6_WHEEL_MIN_LINES,
@@ -978,7 +1133,7 @@ export default function DrawPage() {
       const recentLoto7 = loto7Data.slice(0, LOTO7_RECENT_COUNT);
 
       if (loto7Modes.expert && loto7Modes.random && loto7Modes.wheel) {
-        const poolResult = buildLoto7WheelPool(latestLoto7, recentLoto7);
+        const poolResult = buildLoto7WheelPool(latestLoto7, recentLoto7, loto7PoolCounts);
         const lines = clamp(
           loto7WheelLines,
           LOTO7_WHEEL_MIN_LINES,
@@ -1202,6 +1357,33 @@ export default function DrawPage() {
 
           {loto6Modes.wheel ? (
             <div className="wheel-controls">
+              <label htmlFor="loto6-expert-count">達人式候補数</label>
+              <input
+                id="loto6-expert-count"
+                type="number"
+                min={1}
+                max={42}
+                value={loto6PoolCounts.expert}
+                onChange={(event) => updateLoto6PoolCounts("expert", Number(event.target.value))}
+              />
+              <label htmlFor="loto6-random-count">乱数式候補数</label>
+              <input
+                id="loto6-random-count"
+                type="number"
+                min={1}
+                max={42}
+                value={loto6PoolCounts.random}
+                onChange={(event) => updateLoto6PoolCounts("random", Number(event.target.value))}
+              />
+              <label htmlFor="loto6-total-count">候補プール総数</label>
+              <input
+                id="loto6-total-count"
+                type="number"
+                min={6}
+                max={43}
+                value={loto6PoolCounts.total}
+                onChange={(event) => updateLoto6PoolCounts("total", Number(event.target.value))}
+              />
               <label htmlFor="loto6-wheel-lines">wheel口数</label>
               <input
                 id="loto6-wheel-lines"
@@ -1242,7 +1424,7 @@ export default function DrawPage() {
                 乱数式候補: {resultLoto6Wheel.randomCandidates.join(", ")}
               </p>
               <p className="rule-note">
-                プール12個: {resultLoto6Wheel.pool.join(", ")}
+                プール{loto6PoolCounts.total}個: {resultLoto6Wheel.pool.join(", ")}
               </p>
               <div className="wheel-tickets">
                 {resultLoto6Wheel.tickets.map((ticket, index) => (
@@ -1298,6 +1480,33 @@ export default function DrawPage() {
 
           {loto7Modes.wheel ? (
             <div className="wheel-controls">
+              <label htmlFor="loto7-expert-count">達人式候補数</label>
+              <input
+                id="loto7-expert-count"
+                type="number"
+                min={1}
+                max={36}
+                value={loto7PoolCounts.expert}
+                onChange={(event) => updateLoto7PoolCounts("expert", Number(event.target.value))}
+              />
+              <label htmlFor="loto7-random-count">乱数式候補数</label>
+              <input
+                id="loto7-random-count"
+                type="number"
+                min={1}
+                max={36}
+                value={loto7PoolCounts.random}
+                onChange={(event) => updateLoto7PoolCounts("random", Number(event.target.value))}
+              />
+              <label htmlFor="loto7-total-count">候補プール総数</label>
+              <input
+                id="loto7-total-count"
+                type="number"
+                min={7}
+                max={37}
+                value={loto7PoolCounts.total}
+                onChange={(event) => updateLoto7PoolCounts("total", Number(event.target.value))}
+              />
               <label htmlFor="loto7-wheel-lines">wheel口数</label>
               <input
                 id="loto7-wheel-lines"
@@ -1338,7 +1547,7 @@ export default function DrawPage() {
                 乱数式候補: {resultLoto7Wheel.randomCandidates.join(", ")}
               </p>
               <p className="rule-note">
-                プール12個: {resultLoto7Wheel.pool.join(", ")}
+                プール{loto7PoolCounts.total}個: {resultLoto7Wheel.pool.join(", ")}
               </p>
               <div className="wheel-tickets">
                 {resultLoto7Wheel.tickets.map((ticket, index) => (
@@ -1553,16 +1762,3 @@ export default function DrawPage() {
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
