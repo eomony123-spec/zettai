@@ -93,8 +93,15 @@ const FULL_TREND_RULES: TrendRuleFlags = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const toHalfWidthDigits = (value: string) =>
+  value.replace(/[０-９]/g, (char) =>
+    String.fromCharCode(char.charCodeAt(0) - 0xfee0)
+  );
+
 const parseIntegerInput = (value: string, fallback: number) => {
-  const parsed = Number.parseInt(value, 10);
+  const normalized = toHalfWidthDigits(value);
+  const digitsOnly = normalized.replace(/[^0-9]/g, "");
+  const parsed = Number.parseInt(digitsOnly, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
@@ -1366,8 +1373,9 @@ export default function DrawPage() {
                 <label htmlFor="loto6-expert-count">達人式候補数</label>
                 <input
                   id="loto6-expert-count"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1}
                   max={42}
                   value={loto6PoolCounts.expert}
@@ -1383,8 +1391,9 @@ export default function DrawPage() {
                 <label htmlFor="loto6-random-count">乱数式候補数</label>
                 <input
                   id="loto6-random-count"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1}
                   max={42}
                   value={loto6PoolCounts.random}
@@ -1400,8 +1409,9 @@ export default function DrawPage() {
                 <label htmlFor="loto6-total-count">候補プール総数</label>
                 <input
                   id="loto6-total-count"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={6}
                   max={43}
                   value={loto6PoolCounts.total}
@@ -1417,8 +1427,9 @@ export default function DrawPage() {
                 <label htmlFor="loto6-wheel-lines">wheel口数</label>
                 <input
                   id="loto6-wheel-lines"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={LOTO6_WHEEL_MIN_LINES}
                   max={LOTO6_WHEEL_MAX_LINES}
                   value={loto6WheelLines}
@@ -1512,8 +1523,9 @@ export default function DrawPage() {
                 <label htmlFor="loto7-expert-count">達人式候補数</label>
                 <input
                   id="loto7-expert-count"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1}
                   max={36}
                   value={loto7PoolCounts.expert}
@@ -1529,8 +1541,9 @@ export default function DrawPage() {
                 <label htmlFor="loto7-random-count">乱数式候補数</label>
                 <input
                   id="loto7-random-count"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1}
                   max={36}
                   value={loto7PoolCounts.random}
@@ -1546,8 +1559,9 @@ export default function DrawPage() {
                 <label htmlFor="loto7-total-count">候補プール総数</label>
                 <input
                   id="loto7-total-count"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={7}
                   max={37}
                   value={loto7PoolCounts.total}
@@ -1563,8 +1577,9 @@ export default function DrawPage() {
                 <label htmlFor="loto7-wheel-lines">wheel口数</label>
                 <input
                   id="loto7-wheel-lines"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   min={LOTO7_WHEEL_MIN_LINES}
                   max={LOTO7_WHEEL_MAX_LINES}
                   value={loto7WheelLines}
