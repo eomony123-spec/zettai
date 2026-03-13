@@ -33,6 +33,7 @@ type PreparedStats = {
 
 const LAMBDA = 0.96;
 const EPSILON = 1;
+const TOP_POOL_LIMIT = 120;
 
 const getTargetDigits = (row: NumbersDrawRow, digitsLength: number) =>
   digitsLength === 4 ? row.numbers4 : row.numbers3;
@@ -216,6 +217,45 @@ const filterCandidates = (ranked: number[][], stats: PreparedStats) => {
   return filtered.length >= 20 ? filtered : ranked;
 };
 
+const secureRandomFloat = () => {
+  const buffer = new Uint32Array(1);
+  crypto.getRandomValues(buffer);
+  return buffer[0] / 0x100000000;
+};
+
+const weightedPickIndex = (weights: number[]) => {
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+  let threshold = secureRandomFloat() * totalWeight;
+
+  for (let index = 0; index < weights.length; index += 1) {
+    threshold -= weights[index];
+    if (threshold <= 0) return index;
+  }
+
+  return weights.length - 1;
+};
+
+const pickDiverseCandidates = (
+  ranked: { digits: number[]; score: number }[],
+  count: number
+) => {
+  const pool = [...ranked];
+  const selected: number[][] = [];
+
+  while (selected.length < count && pool.length > 0) {
+    const weights = pool.map((item, index) => {
+      const rankWeight = (pool.length - index) / pool.length;
+      const scoreWeight = Math.exp(item.score - pool[0].score);
+      return rankWeight * scoreWeight;
+    });
+    const pickedIndex = weightedPickIndex(weights);
+    selected.push(pool[pickedIndex].digits);
+    pool.splice(pickedIndex, 1);
+  }
+
+  return selected;
+};
+
 export const buildNumbersPredictions = (
   rows: NumbersDrawRow[],
   digitsLength: number,
@@ -224,16 +264,26 @@ export const buildNumbersPredictions = (
   const stats = prepareStats(rows, digitsLength, recentCount);
   const ranked = enumerateCandidates(digitsLength)
     .map((digits) => ({ digits, score: scoreCandidate(digits, stats) }))
-    .sort((a, b) => b.score - a.score)
-    .map((item) => item.digits);
+    .sort((a, b) => b.score - a.score);
 
-  const filtered = filterCandidates(ranked, stats).slice(0, 20);
+  const filteredPool = filterCandidates(
+    ranked.map((item) => item.digits),
+    stats
+  );
+  const filteredSet = new Set(filteredPool.map((digits) => digits.join("")));
+  const weightedPool = ranked
+    .filter((item) => filteredSet.has(item.digits.join("")))
+    .slice(0, TOP_POOL_LIMIT);
+  const selected = pickDiverseCandidates(
+    weightedPool.length >= 20 ? weightedPool : ranked.slice(0, TOP_POOL_LIMIT),
+    20
+  );
 
   return {
     modelName: "干渉モデル",
     recentCount,
-    primary: filtered.slice(0, 5),
-    secondary: filtered.slice(5, 15),
-    reserve: filtered.slice(15, 20)
+    primary: selected.slice(0, 5),
+    secondary: selected.slice(5, 15),
+    reserve: selected.slice(15, 20)
   };
 };
