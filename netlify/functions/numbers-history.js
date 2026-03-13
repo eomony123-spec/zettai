@@ -1,130 +1,161 @@
-const INDEX_URLS = [
-  "https://www.mizuhobank.co.jp/takarakuji/check/numbers/index.html",
-  "https://www.mizuhobank.co.jp/takarakuji/check/numbers/backnumber/index.html"
-];
-
-const PAGE_URL_PATTERN =
-  /https:\/\/www\.mizuhobank\.co\.jp\/takarakuji\/check\/numbers\/backnumber\/num\d{4}\.html|\/takarakuji\/check\/numbers\/backnumber\/num\d{4}\.html/g;
-
-const FALLBACK_PAGE_URLS = [
-  6921,
-  6901,
-  6881,
-  6861,
-  6841,
-  6821,
-  6801
-].map(
-  (drawNo) =>
-    `https://www.mizuhobank.co.jp/takarakuji/check/numbers/backnumber/num${drawNo}.html`
-);
-
-const stripHtml = (value) =>
-  value
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const normalizePageUrl = (value) => {
-  if (value.startsWith("http")) return value;
-  return `https://www.mizuhobank.co.jp${value}`;
+const CSV_URLS = {
+  numbers3: process.env.PAYPAY_NUMBERS3_CSV_URL,
+  numbers4: process.env.PAYPAY_NUMBERS4_CSV_URL
 };
 
-const extractPageUrls = (html) => {
-  const matches = html.match(PAGE_URL_PATTERN) ?? [];
-  return Array.from(
-    new Set(
-      matches
-        .map(normalizePageUrl)
-        .filter((value) => value.endsWith(".html"))
-    )
-  ).sort((a, b) => b.localeCompare(a, "en"));
+const parseCsvRow = (line) => {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current.trim());
+  return result;
 };
 
-const parseNumbersPage = (html) => {
-  const rows = html.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
-  const parsed = [];
+const normalizeHeader = (value) => value.replace(/\s+/g, "").toLowerCase();
 
-  for (const row of rows) {
-    const cells = Array.from(row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)).map(
-      (match) => stripHtml(match[1])
-    );
-    if (cells.length < 4) continue;
+const findColumnIndex = (header, predicates) => {
+  for (let index = 0; index < header.length; index += 1) {
+    if (predicates.some((predicate) => predicate(header[index]))) {
+      return index;
+    }
+  }
+  return -1;
+};
 
-    const drawMatch = cells[0].match(/第\s*(\d+)\s*回/);
-    const numbers3Match = cells.find((cell) => /^\d{3}$/.test(cell));
-    const numbers4Match = cells.find((cell) => /^\d{4}$/.test(cell));
+const parseDrawNo = (value) => {
+  const match = String(value).match(/(\d+)/);
+  return match ? Number.parseInt(match[1], 10) : null;
+};
 
-    if (!drawMatch || !numbers3Match || !numbers4Match) continue;
+const parseDigits = (value, length) => {
+  const normalized = String(value).replace(/\D/g, "");
+  if (normalized.length !== length) return null;
+  return normalized.split("").map((digit) => Number.parseInt(digit, 10));
+};
 
-    parsed.push({
-      drawNo: Number.parseInt(drawMatch[1], 10),
-      drawDate: cells[1] ?? "",
-      numbers3: numbers3Match.split("").map((digit) => Number.parseInt(digit, 10)),
-      numbers4: numbers4Match.split("").map((digit) => Number.parseInt(digit, 10))
+const parsePayPayCsv = (text, digitsLength, keyName) => {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const header = parseCsvRow(lines[0]).map(normalizeHeader);
+  const drawNoIndex = findColumnIndex(header, [
+    (value) => value.includes("回") || value.includes("draw")
+  ]);
+  const dateIndex = findColumnIndex(header, [
+    (value) => value.includes("日") || value.includes("date")
+  ]);
+  const numberIndex = findColumnIndex(header, [
+    (value) => value.includes("当せん番号"),
+    (value) => value.includes("当選番号"),
+    (value) => value.includes("抽せん番号"),
+    (value) => value.includes("抽選番号"),
+    (value) => value.includes("番号")
+  ]);
+
+  const rows = [];
+  for (const line of lines.slice(1)) {
+    const cells = parseCsvRow(line);
+    const drawNo = drawNoIndex >= 0 ? parseDrawNo(cells[drawNoIndex]) : parseDrawNo(cells[0]);
+    const digits = numberIndex >= 0
+      ? parseDigits(cells[numberIndex], digitsLength)
+      : cells.map((cell) => parseDigits(cell, digitsLength)).find(Boolean) ?? null;
+
+    if (!drawNo || !digits) continue;
+
+    rows.push({
+      drawNo,
+      drawDate: dateIndex >= 0 ? cells[dateIndex] ?? "" : "",
+      [keyName]: digits
     });
   }
 
-  return parsed;
+  return rows;
 };
 
 exports.handler = async (event) => {
   try {
-    const requestedLimit = Number.parseInt(
-      event.queryStringParameters?.limit ?? "120",
-      10
-    );
+    const requestedLimit = Number.parseInt(event.queryStringParameters?.limit ?? "120", 10);
     const limit = Number.isFinite(requestedLimit)
       ? Math.min(Math.max(requestedLimit, 20), 200)
       : 120;
 
-    const discoveredUrls = new Set();
-    for (const indexUrl of INDEX_URLS) {
-      const response = await fetch(indexUrl, {
-        headers: {
-          "user-agent": "tensaikun"
-        }
-      });
-      if (!response.ok) continue;
-      const html = await response.text();
-      extractPageUrls(html).forEach((url) => discoveredUrls.add(url));
-    }
-
-    const pageUrls = Array.from(
-      new Set([...Array.from(discoveredUrls), ...FALLBACK_PAGE_URLS])
-    ).sort((a, b) => b.localeCompare(a, "en"));
-
-    if (pageUrls.length === 0) {
+    if (!CSV_URLS.numbers3 || !CSV_URLS.numbers4) {
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: "No backnumber pages found." })
+        body: JSON.stringify({ error: "Missing PayPay CSV URLs." })
       };
     }
 
-    const allRows = [];
-    const seenDrawNos = new Set();
+    const [numbers3Response, numbers4Response] = await Promise.all([
+      fetch(CSV_URLS.numbers3, { headers: { "user-agent": "tensaikun" } }),
+      fetch(CSV_URLS.numbers4, { headers: { "user-agent": "tensaikun" } })
+    ]);
 
-    for (const pageUrl of pageUrls.slice(0, 8)) {
-      const response = await fetch(pageUrl, {
-        headers: {
-          "user-agent": "tensaikun"
-        }
-      });
-      if (!response.ok) continue;
-
-      const html = await response.text();
-      const rows = parseNumbersPage(html);
-      for (const row of rows) {
-        if (seenDrawNos.has(row.drawNo)) continue;
-        seenDrawNos.add(row.drawNo);
-        allRows.push(row);
-      }
-      if (allRows.length >= limit) break;
+    if (!numbers3Response.ok || !numbers4Response.ok) {
+      return {
+        statusCode: 502,
+        body: JSON.stringify({ error: "Failed to fetch PayPay CSV." })
+      };
     }
 
-    allRows.sort((a, b) => b.drawNo - a.drawNo);
+    const [numbers3Text, numbers4Text] = await Promise.all([
+      numbers3Response.text(),
+      numbers4Response.text()
+    ]);
+
+    const numbers3Rows = parsePayPayCsv(numbers3Text, 3, "numbers3");
+    const numbers4Rows = parsePayPayCsv(numbers4Text, 4, "numbers4");
+    const merged = new Map();
+
+    for (const row of numbers3Rows) {
+      merged.set(row.drawNo, {
+        drawNo: row.drawNo,
+        drawDate: row.drawDate,
+        numbers3: row.numbers3,
+        numbers4: []
+      });
+    }
+
+    for (const row of numbers4Rows) {
+      const current = merged.get(row.drawNo) ?? {
+        drawNo: row.drawNo,
+        drawDate: row.drawDate,
+        numbers3: [],
+        numbers4: []
+      };
+      merged.set(row.drawNo, {
+        ...current,
+        drawDate: current.drawDate || row.drawDate,
+        numbers4: row.numbers4
+      });
+    }
+
+    const rows = Array.from(merged.values())
+      .filter((row) => row.numbers3.length === 3 && row.numbers4.length === 4)
+      .sort((a, b) => b.drawNo - a.drawNo)
+      .slice(0, limit);
 
     return {
       statusCode: 200,
@@ -132,7 +163,7 @@ exports.handler = async (event) => {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "public, max-age=300"
       },
-      body: JSON.stringify(allRows.slice(0, limit))
+      body: JSON.stringify(rows)
     };
   } catch (error) {
     return {
