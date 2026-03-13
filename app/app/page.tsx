@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { buildNumbersPredictions, type NumbersDrawRow, type NumbersPredictionGroups } from "../../lib/numbers-model";
 
 type DrawResult = {
   id: string;
@@ -18,6 +19,7 @@ type NumbersResult = {
   id: string;
   createdAt: string;
   digits: number[];
+  predictions?: NumbersPredictionGroups;
 };
 
 type TrendRuleFlags = {
@@ -71,6 +73,7 @@ const NUMBERS4_HISTORY_KEY = "zettai-numbers4-history";
 const NUMBERS3_HISTORY_KEY = "zettai-numbers3-history";
 const LOTO6_POOL_CONFIG_KEY = "zettai-loto6-pool-config";
 const LOTO7_POOL_CONFIG_KEY = "zettai-loto7-pool-config";
+const NUMBERS_MODEL_OPTIONS = [30, 50, 100] as const;
 const MAX_HISTORY = 50;
 const LOTO6_RECENT_COUNT = 24;
 const LOTO7_RECENT_COUNT = 24;
@@ -708,8 +711,13 @@ export default function DrawPage() {
     main: number[];
     bonus: number;
   } | null>(null);
-  const [resultNumbers4, setResultNumbers4] = useState<number[] | null>(null);
-  const [resultNumbers3, setResultNumbers3] = useState<number[] | null>(null);
+  const [resultNumbers4, setResultNumbers4] = useState<NumbersPredictionGroups | null>(null);
+  const [resultNumbers3, setResultNumbers3] = useState<NumbersPredictionGroups | null>(null);
+  const [numbersData, setNumbersData] = useState<NumbersDrawRow[]>([]);
+  const [numbersStatus, setNumbersStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [numbersStatusMessage, setNumbersStatusMessage] = useState("");
+  const [numbers4RecentCount, setNumbers4RecentCount] = useState(50);
+  const [numbers3RecentCount, setNumbers3RecentCount] = useState(50);
   const [historyLoto6, setHistoryLoto6] = useState<DrawResult[]>([]);
   const [historyLoto7, setHistoryLoto7] = useState<DrawResult[]>([]);
   const [historyMini, setHistoryMini] = useState<DrawResult[]>([]);
@@ -906,6 +914,42 @@ export default function DrawPage() {
     };
 
     loadLoto7();
+
+    return () => {
+      active = false;
+    };
+  }, [unlocked]);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    let active = true;
+
+    const loadNumbers = async () => {
+      try {
+        setNumbersStatus("loading");
+        setNumbersStatusMessage("");
+        const response = await fetch("/.netlify/functions/numbers-history?limit=120");
+        if (!response.ok) {
+          throw new Error("Numbers履歴の取得に失敗しました。");
+        }
+        const rows = (await response.json()) as NumbersDrawRow[];
+        if (!active) return;
+        setNumbersData(rows);
+        if (rows.length === 0) {
+          setNumbersStatus("error");
+          setNumbersStatusMessage("直近データを取得できませんでした。");
+        } else {
+          setNumbersStatus("ready");
+          setNumbersStatusMessage("");
+        }
+      } catch (error) {
+        if (!active) return;
+        setNumbersStatus("error");
+        setNumbersStatusMessage("直近データを取得できませんでした。");
+      }
+    };
+
+    loadNumbers();
 
     return () => {
       active = false;
@@ -1293,45 +1337,41 @@ export default function DrawPage() {
   };
 
   const startNumbers4 = () => {
-    if (runningNumbers4) return;
+    if (runningNumbers4 || numbersStatus !== "ready") return;
     setRunningNumbers4(true);
     setResultNumbers4(null);
-    const currentRun = runIdRef.current + 1;
-    runIdRef.current = currentRun;
 
-    const total = 600 + secureRandomInt(800);
-    setTimeout(() => {
-      if (runIdRef.current !== currentRun) return;
-      const digits = generateNumbers(4);
-      setResultNumbers4(digits);
-      setRunningNumbers4(false);
+    try {
+      const prediction = buildNumbersPredictions(numbersData, 4, numbers4RecentCount);
+      setResultNumbers4(prediction);
       pushHistory(NUMBERS4_HISTORY_KEY, historyNumbers4, setHistoryNumbers4, {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
-        digits
+        digits: prediction.primary[0] ?? [],
+        predictions: prediction
       });
-    }, total);
+    } finally {
+      setRunningNumbers4(false);
+    }
   };
 
   const startNumbers3 = () => {
-    if (runningNumbers3) return;
+    if (runningNumbers3 || numbersStatus !== "ready") return;
     setRunningNumbers3(true);
     setResultNumbers3(null);
-    const currentRun = runIdRef.current + 1;
-    runIdRef.current = currentRun;
 
-    const total = 600 + secureRandomInt(800);
-    setTimeout(() => {
-      if (runIdRef.current !== currentRun) return;
-      const digits = generateNumbers(3);
-      setResultNumbers3(digits);
-      setRunningNumbers3(false);
+    try {
+      const prediction = buildNumbersPredictions(numbersData, 3, numbers3RecentCount);
+      setResultNumbers3(prediction);
       pushHistory(NUMBERS3_HISTORY_KEY, historyNumbers3, setHistoryNumbers3, {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
-        digits
+        digits: prediction.primary[0] ?? [],
+        predictions: prediction
       });
-    }, total);
+    } finally {
+      setRunningNumbers3(false);
+    }
   };
 
   if (!unlocked) {
@@ -1769,40 +1809,150 @@ export default function DrawPage() {
 
       <section className="card" id="numbers4">
         <h2 className="title">ナンバーズ4 当選予想</h2>
+        <div className="rule-panel">
+          <div className="inline-controls">
+            <label htmlFor="numbers4-recent-count">直近回数</label>
+            <select
+              id="numbers4-recent-count"
+              value={numbers4RecentCount}
+              onChange={(event) =>
+                setNumbers4RecentCount(Number.parseInt(event.target.value, 10))
+              }
+            >
+              {NUMBERS_MODEL_OPTIONS.map((value) => (
+                <option key={`numbers4-${value}`} value={value}>
+                  {value}回
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="rule-note">干渉モデルで本命5件・準本命10件・抑え5件を出します。</p>
+          {numbersStatusMessage ? <p className="error">{numbersStatusMessage}</p> : null}
+        </div>
 
         <div className="result">
           <div className="numbers">
-            {(resultNumbers4 ?? Array(4).fill("-")).map((value, index) => (
+            {(resultNumbers4?.primary[0] ?? Array(4).fill("-")).map((value, index) => (
               <span className="ball" key={`${value}-${index}`}>
                 {value}
               </span>
             ))}
           </div>
+
+          {resultNumbers4 ? (
+            <div className="prediction-groups">
+              <div className="prediction-group">
+                <div className="prediction-title">本命 5件</div>
+                <div className="prediction-list">
+                  {resultNumbers4.primary.map((digits) => (
+                    <div className="prediction-item" key={`numbers4-primary-${digits.join("")}`}>
+                      {digits.join("")}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="prediction-group">
+                <div className="prediction-title">準本命 10件</div>
+                <div className="prediction-list">
+                  {resultNumbers4.secondary.map((digits) => (
+                    <div className="prediction-item" key={`numbers4-secondary-${digits.join("")}`}>
+                      {digits.join("")}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="prediction-group">
+                <div className="prediction-title">抑え 5件</div>
+                <div className="prediction-list">
+                  {resultNumbers4.reserve.map((digits) => (
+                    <div className="prediction-item" key={`numbers4-reserve-${digits.join("")}`}>
+                      {digits.join("")}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="actions">
-          <button className="btn" type="button" onClick={startNumbers4}>
-            {runningNumbers4 ? "抽選中..." : "抽選を開始"}
+          <button className="btn" type="button" onClick={startNumbers4} disabled={numbersStatus !== "ready"}>
+            {runningNumbers4 ? "計算中..." : "抽選を開始"}
           </button>
         </div>
       </section>
 
       <section className="card" id="numbers3">
         <h2 className="title">ナンバーズ3 当選予想</h2>
+        <div className="rule-panel">
+          <div className="inline-controls">
+            <label htmlFor="numbers3-recent-count">直近回数</label>
+            <select
+              id="numbers3-recent-count"
+              value={numbers3RecentCount}
+              onChange={(event) =>
+                setNumbers3RecentCount(Number.parseInt(event.target.value, 10))
+              }
+            >
+              {NUMBERS_MODEL_OPTIONS.map((value) => (
+                <option key={`numbers3-${value}`} value={value}>
+                  {value}回
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="rule-note">干渉モデルで本命5件・準本命10件・抑え5件を出します。</p>
+          {numbersStatusMessage ? <p className="error">{numbersStatusMessage}</p> : null}
+        </div>
 
         <div className="result">
           <div className="numbers">
-            {(resultNumbers3 ?? Array(3).fill("-")).map((value, index) => (
+            {(resultNumbers3?.primary[0] ?? Array(3).fill("-")).map((value, index) => (
               <span className="ball" key={`${value}-${index}`}>
                 {value}
               </span>
             ))}
           </div>
+
+          {resultNumbers3 ? (
+            <div className="prediction-groups">
+              <div className="prediction-group">
+                <div className="prediction-title">本命 5件</div>
+                <div className="prediction-list">
+                  {resultNumbers3.primary.map((digits) => (
+                    <div className="prediction-item" key={`numbers3-primary-${digits.join("")}`}>
+                      {digits.join("")}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="prediction-group">
+                <div className="prediction-title">準本命 10件</div>
+                <div className="prediction-list">
+                  {resultNumbers3.secondary.map((digits) => (
+                    <div className="prediction-item" key={`numbers3-secondary-${digits.join("")}`}>
+                      {digits.join("")}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="prediction-group">
+                <div className="prediction-title">抑え 5件</div>
+                <div className="prediction-list">
+                  {resultNumbers3.reserve.map((digits) => (
+                    <div className="prediction-item" key={`numbers3-reserve-${digits.join("")}`}>
+                      {digits.join("")}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="actions">
-          <button className="btn" type="button" onClick={startNumbers3}>
-            {runningNumbers3 ? "抽選中..." : "抽選を開始"}
+          <button className="btn" type="button" onClick={startNumbers3} disabled={numbersStatus !== "ready"}>
+            {runningNumbers3 ? "計算中..." : "抽選を開始"}
           </button>
         </div>
       </section>
@@ -1907,7 +2057,7 @@ export default function DrawPage() {
                       {new Date(item.createdAt).toLocaleString()}
                     </span>
                     <span className="history-main">
-                      {item.digits.join("")}
+                      {item.predictions ? `本命 ${item.predictions.primary.map((digits) => digits.join("")).join(", ")}` : item.digits.join("")}
                     </span>
                   </div>
                 </div>
@@ -1927,7 +2077,7 @@ export default function DrawPage() {
                       {new Date(item.createdAt).toLocaleString()}
                     </span>
                     <span className="history-main">
-                      {item.digits.join("")}
+                      {item.predictions ? `本命 ${item.predictions.primary.map((digits) => digits.join("")).join(", ")}` : item.digits.join("")}
                     </span>
                   </div>
                 </div>
@@ -1939,3 +2089,11 @@ export default function DrawPage() {
     </main>
   );
 }
+
+
+
+
+
+
+
+
