@@ -33,7 +33,8 @@ type PreparedStats = {
 
 const LAMBDA = 0.96;
 const EPSILON = 1;
-const TOP_POOL_LIMIT = 120;
+const TOP_POOL_LIMIT = 160;
+const PRIMARY_FIXED_COUNT = 3;
 
 const getTargetDigits = (row: NumbersDrawRow, digitsLength: number) =>
   digitsLength === 4 ? row.numbers4 : row.numbers3;
@@ -237,15 +238,17 @@ const weightedPickIndex = (weights: number[]) => {
 
 const pickDiverseCandidates = (
   ranked: { digits: number[]; score: number }[],
-  count: number
+  count: number,
+  scoreScale: number,
+  rankPower: number
 ) => {
   const pool = [...ranked];
   const selected: number[][] = [];
 
   while (selected.length < count && pool.length > 0) {
     const weights = pool.map((item, index) => {
-      const rankWeight = (pool.length - index) / pool.length;
-      const scoreWeight = Math.exp(item.score - pool[0].score);
+      const rankWeight = Math.pow((pool.length - index) / pool.length, rankPower);
+      const scoreWeight = Math.exp((item.score - pool[0].score) * scoreScale);
       return rankWeight * scoreWeight;
     });
     const pickedIndex = weightedPickIndex(weights);
@@ -274,16 +277,25 @@ export const buildNumbersPredictions = (
   const weightedPool = ranked
     .filter((item) => filteredSet.has(item.digits.join("")))
     .slice(0, TOP_POOL_LIMIT);
-  const selected = pickDiverseCandidates(
-    weightedPool.length >= 20 ? weightedPool : ranked.slice(0, TOP_POOL_LIMIT),
-    20
+  const basePool = weightedPool.length >= 20 ? weightedPool : ranked.slice(0, TOP_POOL_LIMIT);
+  const fixedPrimary = basePool.slice(0, PRIMARY_FIXED_COUNT).map((item) => item.digits);
+  const remainingPool = basePool.filter(
+    (item) => !fixedPrimary.some((digits) => digits.join("") === item.digits.join(""))
   );
+  const variablePrimary = pickDiverseCandidates(remainingPool.slice(0, 30), 2, 0.35, 1.2);
+  const usedSignatures = new Set([...fixedPrimary, ...variablePrimary].map((digits) => digits.join("")));
+  const secondaryPool = remainingPool.filter((item) => !usedSignatures.has(item.digits.join("")));
+  const secondary = pickDiverseCandidates(secondaryPool.slice(0, 80), 10, 0.18, 0.8);
+  secondary.forEach((digits) => usedSignatures.add(digits.join("")));
+  const reservePool = secondaryPool.filter((item) => !usedSignatures.has(item.digits.join("")));
+  const reserve = pickDiverseCandidates(reservePool.slice(0, 120), 5, 0.12, 0.65);
+  const primary = [...fixedPrimary, ...variablePrimary].slice(0, 5);
 
   return {
     modelName: "干渉モデル",
     recentCount,
-    primary: selected.slice(0, 5),
-    secondary: selected.slice(5, 15),
-    reserve: selected.slice(15, 20)
+    primary,
+    secondary,
+    reserve
   };
 };
